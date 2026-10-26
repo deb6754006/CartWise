@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CartWise: תוצאות ופירוט</title>
+<link rel="stylesheet" href="screens.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="m" viewBox="0 0 60 52"><rect x="6" y="10" width="38" height="24" rx="9" fill="#DDD6FE"/><rect x="40" y="2" width="16" height="18" rx="4" fill="#7DD3FC"/><circle cx="18" cy="20" r="2.6" fill="#374151"/><circle cx="31" cy="20" r="2.6" fill="#374151"/><path d="M19 26 Q24.5 30 30 26" stroke="#374151" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="12" cy="25" r="2" fill="#F9A8D4"/><circle cx="37" cy="25" r="2" fill="#F9A8D4"/><circle cx="14" cy="42" r="4" fill="#A8A29E"/><circle cx="34" cy="42" r="4" fill="#A8A29E"/></symbol>
+</svg>
+<header class="page">
+  <h1>מסכים 3: תוצאות, מפה ופירוט חנות</h1>
+  <p>לפי EXPERIENCE.md, §10.5 ו-§10.6, ולפי טבלת המצבים ב-§6. שמות הרשתות הם דוגמה בלבד.</p>
+  <nav><a href="screens-1-onboarding-home.html">1: Onboarding ובית</a><a href="screens-2-lists.html">2: רשימות וטווח</a><a href="screens-3-results.html">3: תוצאות ופירוט</a><a href="screens-4-scan.html">4: סריקה</a><a href="screens-5-spend-profile.html">5: הוצאות, פרופיל ומכסה</a></nav>
+</header>
+
+<div class="grid">
+
+<div class="col"><h2>SCR-RESULTS: טעינה</h2><p class="why">Skeleton עם טקסט שמסביר מה קורה. אחרי 3 שניות מופיע "עוד רגע...".</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top decor"><div class="bar"><svg width="54" height="48"><use href="#m"/></svg><div><p class="title">רגע, בודק...</p><div class="sub">בודקים מחירים ב-4 חנויות בטווח</div></div></div></div>
+  <div class="body">
+    <div class="card"><div class="skel" style="height:14px;width:40%"></div><div class="skel" style="height:20px;width:80%;margin-top:10px"></div><div class="skel" style="height:12px;width:60%;margin-top:10px"></div></div>
+    <div class="card"><div class="skel" style="height:20px;width:75%"></div><div class="skel" style="height:12px;width:55%;margin-top:10px"></div></div>
+    <div class="card"><div class="skel" style="height:20px;width:70%"></div><div class="skel" style="height:12px;width:50%;margin-top:10px"></div></div>
+  </div>
+  <div class="nav"><span>בית</span><span class="on">רשימות</span><span class="scan">סריקה</span><span>הוצאות</span><span>פרופיל</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-RESULTS: רשימה</h2><p class="why">החנות הכי משתלמת בראש. תגיות מהירות להחלפת טווח (UJ-2). חנויות עם כיסוי חלקי ברשימה מקופלת. בתחתית, אילו מועדונים נכללו בחישוב.</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top decor">
+    <div class="bar"><svg width="48" height="42"><use href="#m"/></svg><div><p class="title">מצאתי לך איפה הכי משתלם</p><div class="sub">הקנייה השבועית · 20 פריטים · נשארו 2 השוואות</div></div></div>
+    <div class="chips"><span class="chip ghost">🚶 10</span><span class="chip on">🚗 15</span><span class="chip ghost">🚌 20</span></div>
+  </div>
+  <div class="body" style="gap:8px">
+    <div class="seg"><span class="on">רשימה</span><span>מפה</span></div>
+    <div class="card best"><span class="badge">הכי משתלם</span>
+      <div class="row base"><span class="name">רשת ב׳ · סניף הגבעה</span><span class="price-lg">₪412.30</span></div>
+      <div class="meta"><span>20/20 פריטים</span><span>9 דק׳</span><span class="rel g"><i></i>עדכני</span></div>
+      <div class="meta" style="color:var(--primary)">חוסכים ₪62.90 לעומת החנות היקרה בטווח</div></div>
+    <div class="card"><div class="row base"><span class="name">רשת א׳ · מרכז</span><span class="price-lg">₪438.90</span></div>
+      <div class="meta"><span>+₪26.60</span><span>19/20</span><span class="est">כולל הערכה ₪7.90</span><span>12 דק׳</span><span class="rel y"><i></i>בינוני</span></div></div>
+    <div class="card"><div class="row base"><span class="name">רשת ג׳ · הקניון</span><span class="price-lg">₪475.20</span></div>
+      <div class="meta"><span>+₪62.90</span><span>20/20</span><span>14 דק׳</span><span class="rel g"><i></i>עדכני</span></div></div>
+    <div class="card" style="border-style:dashed"><div class="row small"><span>חנויות עם נתונים חלקיים (1)</span><span>▾</span></div></div>
+    <div class="small">המחירים כוללים את המועדונים שסימנתם: רשת א׳, רשת ב׳ · <span class="link">שינוי</span></div>
+  </div>
+  <div class="nav"><span>בית</span><span class="on">רשימות</span><span class="scan">סריקה</span><span>הוצאות</span><span>פרופיל</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-RESULTS: מפה</h2><p class="why">סיכות עם מחיר הסל, והחנות הכי משתלמת בסגול. אין עיגול טווח, כי הטווח נמדד בזמן. לחיצה על סיכה פותחת כרטיס בתחתית.</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top" style="padding-bottom:6px"><div class="chips" style="margin-top:0"><span class="chip ghost">🚶 10</span><span class="chip on">🚗 15</span><span class="chip ghost">🚌 20</span></div></div>
+  <div style="padding:0 16px 8px"><div class="seg"><span>רשימה</span><span class="on">מפה</span></div></div>
+  <div style="flex:1;position:relative;background:#EEF2EA">
+    <svg width="100%" height="100%" viewBox="0 0 324 420" preserveAspectRatio="none" aria-label="מפה עם 4 חנויות">
+      <path d="M0 120 L324 90 M0 300 L324 330 M90 0 L120 420 M230 0 L210 420" stroke="#FFFFFF" stroke-width="14"/>
+      <path d="M0 210 Q160 180 324 230" stroke="#FDE68A" stroke-width="10" fill="none"/>
+      <rect x="140" y="20" width="60" height="50" rx="8" fill="#D9F99D" opacity=".6"/>
+    </svg>
+    <div style="position:absolute;top:190px;right:150px;width:16px;height:16px;border-radius:50%;background:#3B82F6;border:3px solid #fff;box-shadow:0 0 0 6px rgba(59,130,246,.2)"></div>
+    <div style="position:absolute;top:80px;right:40px" class="tag" ><span style="background:var(--primary);color:#fff;padding:5px 9px;border-radius:999px;font-weight:700;display:inline-block">₪412</span></div>
+    <div style="position:absolute;top:250px;right:220px"><span style="background:#fff;padding:5px 9px;border-radius:999px;font-weight:700;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.2)">₪438</span></div>
+    <div style="position:absolute;top:320px;right:60px"><span style="background:#fff;padding:5px 9px;border-radius:999px;font-weight:700;font-size:12px;box-shadow:0 1px 4px rgba(0,0,0,.2)">₪475</span></div>
+    <div style="position:absolute;top:130px;right:240px"><span style="background:#fff;padding:5px 9px;border-radius:999px;font-size:12px;color:var(--ink-2);border:1px dashed var(--line-2)">חלקי</span></div>
+    <div style="position:absolute;left:12px;top:12px;display:flex;flex-direction:column;gap:6px"><span style="background:#fff;width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.2)">＋</span><span style="background:#fff;width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.2)">−</span><span style="background:#fff;width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.2)">◎</span></div>
+    <div class="card best" style="position:absolute;bottom:10px;left:12px;right:12px"><span class="badge">הכי משתלם</span>
+      <div class="row base"><span class="name">רשת ב׳ · סניף הגבעה</span><span class="price-lg">₪412.30</span></div>
+      <div class="meta"><span>20/20</span><span>9 דק׳ · 3.2 ק״מ</span><span class="rel g"><i></i>עדכני</span><span class="link">לפירוט ←</span></div></div>
+  </div>
+  <div class="nav"><span>בית</span><span class="on">רשימות</span><span class="scan">סריקה</span><span>הוצאות</span><span>פרופיל</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-RESULTS: אין מספיק נתונים</h2><p class="why">אין חנויות בטווח, או שלכל החנויות כיסוי נמוך מהסף. שלוש פעולות להמשך (FR-23). ההשוואה לא נוכתה מהמכסה.</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top"><div class="chips" style="margin-top:0"><span class="chip on">🚶 10</span><span class="chip ghost">🚗 15</span><span class="chip ghost">🚌 20</span></div></div>
+  <div class="body center" style="justify-content:center;gap:12px">
+    <svg width="120" height="104"><use href="#m"/></svg>
+    <p class="title">אין לנו עדיין מספיק מחירים באזור</p>
+    <p class="sub" style="font-size:14px">מצאנו 2 חנויות בהליכה של 10 דקות, אבל יש לנו מחירים רק לפחות מ-60% מהרשימה שלכם</p>
+    <span class="btn" style="width:100%">הרחיבו טווח: 🚗 15 דק׳</span>
+    <span class="btn2" style="width:100%">הציגו גם חנויות עם נתונים חלקיים</span>
+    <span class="btn2" style="width:100%">עזרו לנו: סרקו חשבונית 🧾</span>
+    <span class="small">ההשוואה הזו לא נוכתה מהמכסה</span>
+  </div>
+  <div class="nav"><span>בית</span><span class="on">רשימות</span><span class="scan">סריקה</span><span>הוצאות</span><span>פרופיל</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-STORE: פירוט חנות</h2><p class="why">לכל פריט: המוצר שנבחר, סוג המחיר (מבצע, מועדון) ואמינות. בסוף: פריטים עם הערכה ופריטים במחיר לא ידוע. כפתור ניווט.</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top"><div class="bar"><span class="back">→</span><div style="flex:1"><p class="title">רשת א׳ · מרכז</p><div class="sub">רח׳ הנביאים 12 · 12 דק׳ ברכב</div></div><span class="btn2" style="padding:8px 10px;font-size:13px">ניווט</span></div></div>
+  <div class="body" style="gap:8px">
+    <div class="card"><div class="row base"><span>סה״כ סל</span><span class="price-lg">₪438.90</span></div><div class="meta"><span>19/20 ידועים</span><span class="est">מתוכו הערכה ₪7.90</span></div></div>
+    <div class="card" style="padding:2px 14px">
+      <div class="item"><div class="grow"><div class="name" style="font-size:14.5px">חלב תנובה 3% 1 ל׳ ×3</div><div class="meta"><span class="tag">מבצע: 3 ב-₪15</span><span class="rel g"><i></i>עדכני</span></div></div><span class="price">₪15.00</span></div>
+      <div class="item"><div class="grow"><div class="name" style="font-size:14.5px">חיתולים מידה 4, 62 יח׳</div><div class="meta"><span class="tag">מועדון</span><span class="rel g"><i></i>עדכני</span></div></div><span class="price">₪49.90</span></div>
+      <div class="item"><div class="grow"><div class="name" style="font-size:14.5px">עגבניות 1.5 ק״ג</div><div class="meta"><span>₪6.90 לק״ג</span><span class="rel y"><i></i>בינוני</span></div></div><span class="price">₪10.35</span></div>
+      <div class="item"><div class="grow"><div class="name" style="font-size:14.5px">שמן זית 750 מ״ל</div><div class="meta"><span class="est">הערכה</span><span class="small">לפי מחירים באזור</span></div></div><span class="price" style="color:var(--est-ink)">~₪7.90</span></div>
+      <div class="item"><div class="grow"><div class="name" style="font-size:14.5px">לחם אחיד פרוס ×2</div><div class="meta"><span class="tag grey">ייתכן שאזל</span><span class="rel g"><i></i>עדכני</span></div></div><span class="price">₪13.80</span></div>
+    </div>
+    <div class="small center" style="display:block">⋯ על פריט: ״לא היה במלאי״</div>
+  </div>
+  <div class="nav"><span>בית</span><span class="on">רשימות</span><span class="scan">סריקה</span><span>הוצאות</span><span>פרופיל</span></div>
+</div></div></div>
+
+<div class="col"><h2>SHEET-RELIABILITY: אמינות</h2><p class="why">גיל המחיר, המקור ומספר האישורים (FR-22). הסבר על שלוש הרמות.</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top"><p class="title">רשת א׳ · מרכז</p></div>
+  <div class="dim"></div>
+  <div class="sheet">
+    <h3>עגבניות · ₪6.90 לק״ג</h3>
+    <div class="rel y" style="font-size:15px"><i></i>אמינות בינונית</div>
+    <div class="card" style="display:flex;flex-direction:column;gap:8px">
+      <div class="row"><span class="small">מקור</span><span>חשבונית של משתמש</span></div>
+      <div class="row"><span class="small">עודכן</span><span>לפני 9 ימים</span></div>
+      <div class="row"><span class="small">אישורים</span><span>משתמש אחד</span></div>
+    </div>
+    <div class="small">
+      <div class="rel g"><i></i>עדכני: מקובץ רשמי מהיומיים האחרונים, או מחשבונית מהשבועיים האחרונים שאושרה פעמיים</div><br>
+      <div class="rel y"><i></i>בינוני: קצת ישן, או שאושר פעם אחת בלבד</div><br>
+      <div class="rel r"><i></i>ישן: ייתכן שהמחיר השתנה</div>
+    </div>
+    <span class="btn2">הבנתי</span>
+  </div>
+</div></div></div>
+
+</div>
+</body>
+</html>

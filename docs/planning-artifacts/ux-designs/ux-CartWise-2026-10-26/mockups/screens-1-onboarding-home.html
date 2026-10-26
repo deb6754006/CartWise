@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CartWise: Onboarding ובית</title>
+<link rel="stylesheet" href="screens.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="m" viewBox="0 0 60 52"><rect x="6" y="10" width="38" height="24" rx="9" fill="#DDD6FE"/><rect x="40" y="2" width="16" height="18" rx="4" fill="#7DD3FC"/><circle cx="18" cy="20" r="2.6" fill="#374151"/><circle cx="31" cy="20" r="2.6" fill="#374151"/><path d="M19 26 Q24.5 30 30 26" stroke="#374151" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="12" cy="25" r="2" fill="#F9A8D4"/><circle cx="37" cy="25" r="2" fill="#F9A8D4"/><circle cx="14" cy="42" r="4" fill="#A8A29E"/><circle cx="34" cy="42" r="4" fill="#A8A29E"/></symbol>
+</svg>
+
+<header class="page">
+  <h1>מסכים 1: Onboarding ובית</h1>
+  <p>מסכי מפתח לפי EXPERIENCE.md, §10.1 ו-§10.2. כשיש סתירה, המסמכים קובעים.</p>
+  <nav><a href="screens-1-onboarding-home.html">1: Onboarding ובית</a><a href="screens-2-lists.html">2: רשימות וטווח</a><a href="screens-3-results.html">3: תוצאות ופירוט</a><a href="screens-4-scan.html">4: סריקה</a><a href="screens-5-spend-profile.html">5: הוצאות, פרופיל ומכסה</a></nav>
+</header>
+
+<div class="grid">
+
+<div class="col"><h2>SCR-ONB-1: ברוכים הבאים</h2><p class="why">הדמות, ההבטחה המרכזית בשלוש נקודות, וקישור למדיניות פרטיות. אפשר לדלג.</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span class="link" style="font-size:13px">דלג</span></div>
+  <div class="body center" style="justify-content:center;gap:16px">
+    <svg width="140" height="122"><use href="#m"/></svg>
+    <p class="display">איפה הכי משתלם לקנות?</p>
+    <p class="sub" style="font-size:15px">אני אגיד לכם, לפי הרשימה שלכם</p>
+    <div class="card" style="width:100%;text-align:right;display:flex;flex-direction:column;gap:10px">
+      <div class="row" style="justify-content:flex-start">🏪 <span>חנות אחת, הכי משתלמת בטווח שבחרתם</span></div>
+      <div class="row" style="justify-content:flex-start">💜 <span>המחיר כולל את המועדונים שלכם</span></div>
+      <div class="row" style="justify-content:flex-start">🧾 <span>מחירים מהרשתות ומחשבוניות של הקהילה</span></div>
+    </div>
+  </div>
+  <div class="foot"><div class="dots"><i class="on"></i><i></i><i></i><i></i></div><span class="btn">מתחילים</span><span class="small center" style="display:block">ממשיכים? זה אומר שקראתם את <span class="link">מדיניות הפרטיות</span></span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-ONB-2: מיקום</h2><p class="why">הסבר קצר למה צריך את ההרשאה, וחלופה: הזנת כתובת (EC-14).</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span class="link" style="font-size:13px">דלג</span></div>
+  <div class="body center" style="justify-content:center;gap:16px">
+    <div style="width:120px;height:120px;border-radius:50%;background:var(--sky-decor);display:flex;align-items:center;justify-content:center;font-size:52px">📍</div>
+    <p class="display">איפה אתם?</p>
+    <p class="sub" style="font-size:15px">כדי למצוא חנויות קרובות, נשתמש במיקום שלכם רק בזמן ההשוואה. אנחנו לא שומרים אותו.</p>
+  </div>
+  <div class="foot"><div class="dots"><i></i><i class="on"></i><i></i><i></i></div><span class="btn">אישור מיקום</span><span class="btn2">אזין כתובת במקום</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-ONB-3: טווח</h2><p class="why">אמצעי תחבורה ודקות. זו ברירת המחדל, ואפשר לשנות אותה בכל השוואה (FR-5).</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span class="link" style="font-size:13px">דלג</span></div>
+  <div class="top"><p class="display">כמה אתם מוכנים לנסוע?</p><div class="sub">נשווה רק חנויות שמגיעים אליהן בזמן הזה</div></div>
+  <div class="body" style="gap:16px">
+    <div class="modes"><div><span>🚶</span>הליכה</div><div class="on"><span>🚗</span>רכב</div><div><span>🚌</span>תחבורה ציבורית</div></div>
+    <div class="small">עד כמה דקות?</div>
+    <div class="chips" style="margin:0"><span class="chip ghost">5</span><span class="chip ghost">10</span><span class="chip on">15</span><span class="chip ghost">20</span><span class="chip ghost">30</span></div>
+    <div class="card sky small">💡 זמן הנסיעה לא משנה את הדירוג. הוא רק קובע אילו חנויות נכנסות להשוואה.</div>
+  </div>
+  <div class="foot"><div class="dots"><i></i><i></i><i class="on"></i><i></i></div><span class="btn">המשך</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-ONB-4: מועדונים</h2><p class="why">מתג לכל מועדון. לא מבקשים מספר מועדון (FR-3).</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span class="link" style="font-size:13px">דלג</span></div>
+  <div class="top"><p class="display">באילו מועדונים אתם חברים?</p><div class="sub">כך נראה לכם את המחיר שתשלמו באמת</div></div>
+  <div class="body">
+    <div class="card"><div class="row"><span class="name">מועדון רשת א׳</span><span class="toggle on"></span></div></div>
+    <div class="card"><div class="row"><span class="name">מועדון רשת ב׳</span><span class="toggle on"></span></div></div>
+    <div class="card"><div class="row"><span class="name">מועדון רשת ג׳</span><span class="toggle"></span></div></div>
+    <div class="banner lock">🔒 לא נבקש מספר מועדון או פרטים אישיים</div>
+  </div>
+  <div class="foot"><div class="dots"><i></i><i></i><i></i><i class="on"></i></div><span class="btn">סיום</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-HOME: בית</h2><p class="why">ברכה אישית (השם שמור במכשיר בלבד), מכסה, הרשימה הקבועה, ההשוואה האחרונה וקיצור לסריקה.</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top decor">
+    <div class="bar"><svg width="54" height="48"><use href="#m"/></svg><div><p class="title">שלום רחל 👋</p><div class="sub">מה קונים היום?</div></div></div>
+    <div class="chips"><span class="chip quota">נשארו 3 השוואות החודש</span></div>
+  </div>
+  <div class="body">
+    <div class="card best"><div class="small">הרשימה הקבועה</div>
+      <div class="row base"><span class="name">הקנייה השבועית</span><span class="small">20 פריטים</span></div>
+      <div class="chips"><span class="chip">🚗 רכב · עד 15 דק׳</span></div>
+      <span class="btn" style="margin-top:10px">איפה הכי משתלם?</span></div>
+    <div class="card"><div class="small">ההשוואה האחרונה · יום ד׳ 19:40</div>
+      <div class="row base"><span class="name">רשת ב׳ · סניף הגבעה</span><span class="price-lg">₪412.30</span></div>
+      <div class="meta"><span class="tag grey">המחירים מלפני 2 ימים</span></div></div>
+    <div class="card tint"><div class="row"><div><div class="name">סרקתם חשבונית?</div><div class="small">כל סריקה מוסיפה השוואה, ועוזרת לשכנים</div></div><span style="font-size:28px">🧾</span></div></div>
+  </div>
+  <div class="nav"><span class="on">בית</span><span>רשימות</span><span class="scan">סריקה</span><span>הוצאות</span><span>פרופיל</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-HOME: מצב ריק</h2><p class="why">הכניסה הראשונה, אצל משתמש אורח: אין רשימות. הברכה בלי שם.</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top decor"><p class="title">שלום 👋</p><div class="chips"><span class="chip quota">4 השוואות החודש</span></div></div>
+  <div class="body center" style="justify-content:center;gap:14px">
+    <svg width="130" height="113"><use href="#m"/></svg>
+    <p class="title">בואו נבנה את הרשימה הראשונה</p>
+    <p class="sub" style="font-size:14.5px">מוסיפים מוצרים, בוחרים טווח, ואני מוצא את החנות הכי משתלמת</p>
+    <span class="btn" style="width:100%">יצירת רשימה</span>
+  </div>
+  <div class="nav"><span class="on">בית</span><span>רשימות</span><span class="scan">סריקה</span><span>הוצאות</span><span>פרופיל</span></div>
+</div></div></div>
+
+</div>
+</body>
+</html>

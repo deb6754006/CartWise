@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CartWise: סריקת חשבונית</title>
+<link rel="stylesheet" href="screens.css">
+<style>
+.receipt { background: #fff; color: #111; font-family: "Courier New", monospace; font-size: 11px; line-height: 1.6; padding: 10px 12px; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,.3); }
+.receipt .blur { background: repeating-linear-gradient(45deg,#9CA3AF,#9CA3AF 4px,#D1D5DB 4px,#D1D5DB 8px); color: transparent; border: 2px dashed var(--primary); border-radius: 3px; }
+.frame { border: 3px solid #fff; border-radius: 14px; position: absolute; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="m" viewBox="0 0 60 52"><rect x="6" y="10" width="38" height="24" rx="9" fill="#DDD6FE"/><rect x="40" y="2" width="16" height="18" rx="4" fill="#7DD3FC"/><circle cx="18" cy="20" r="2.6" fill="#374151"/><circle cx="31" cy="20" r="2.6" fill="#374151"/><path d="M19 26 Q24.5 30 30 26" stroke="#374151" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="12" cy="25" r="2" fill="#F9A8D4"/><circle cx="37" cy="25" r="2" fill="#F9A8D4"/><circle cx="14" cy="42" r="4" fill="#A8A29E"/><circle cx="34" cy="42" r="4" fill="#A8A29E"/></symbol>
+  <symbol id="mh" viewBox="0 0 60 52"><rect x="6" y="10" width="38" height="24" rx="9" fill="#DDD6FE"/><rect x="40" y="2" width="16" height="18" rx="4" fill="#7DD3FC"/><path d="M15 21 Q18 17 21 21 M28 21 Q31 17 34 21" stroke="#374151" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M18 25 Q24.5 32 31 25 Z" fill="#374151"/><circle cx="12" cy="25" r="2" fill="#F9A8D4"/><circle cx="37" cy="25" r="2" fill="#F9A8D4"/><circle cx="14" cy="42" r="4" fill="#A8A29E"/><circle cx="34" cy="42" r="4" fill="#A8A29E"/></symbol>
+</svg>
+<header class="page">
+  <h1>מסכים 4: תהליך סריקת חשבונית</h1>
+  <p>לפי EXPERIENCE.md, §10.7 ו-Flow 3. הטשטוש מתבצע על המכשיר, ו-CartWise לא שומרת את התמונה. ספק החילוץ מקבל רק תמונה מטושטשת (FR-30).</p>
+  <nav><a href="screens-1-onboarding-home.html">1: Onboarding ובית</a><a href="screens-2-lists.html">2: רשימות וטווח</a><a href="screens-3-results.html">3: תוצאות ופירוט</a><a href="screens-4-scan.html">4: סריקה</a><a href="screens-5-spend-profile.html">5: הוצאות, פרופיל ומכסה</a></nav>
+</header>
+
+<div class="grid">
+
+<div class="col"><h2>SCR-SCAN-CAPTURE: צילום</h2><p class="why">מסגרת, הנחיה דינמית, צילום של חלק נוסף (עד 3), ובחירה מהגלריה (FR-26).</p>
+<div class="phone"><div class="screen dark">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div style="flex:1;position:relative;background:#1F2937">
+    <div class="frame" style="top:40px;bottom:120px;left:40px;right:40px"></div>
+    <div style="position:absolute;top:60px;left:60px;right:60px;bottom:140px;background:#F9FAFB;opacity:.9;border-radius:4px"></div>
+    <div style="position:absolute;top:10px;left:0;right:0;text-align:center"><span style="background:rgba(0,0,0,.6);padding:6px 12px;border-radius:999px;font-size:13px">ישרו את החשבונית בתוך המסגרת</span></div>
+    <div style="position:absolute;bottom:70px;left:0;right:0;text-align:center"><span style="background:rgba(14,165,233,.85);padding:6px 12px;border-radius:999px;font-size:12px">🔒 נטשטש פרטים אישיים לפני השליחה</span></div>
+    <div style="position:absolute;bottom:12px;left:0;right:0;display:flex;justify-content:space-around;align-items:center">
+      <span style="font-size:13px">🖼️ מהגלריה</span>
+      <span style="width:62px;height:62px;border-radius:50%;border:4px solid #fff;display:inline-block;background:var(--primary)"></span>
+      <span style="font-size:13px">חלק נוסף 1/3</span>
+    </div>
+  </div>
+  <div style="padding:12px 16px;display:flex;justify-content:space-between;font-size:14px"><span>✕ סגירה</span><span>⚡ פלאש</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-SCAN-BLUR: תצוגה מקדימה</h2><p class="why">האזורים המטושטשים מסומנים במסגרת. אפשר להוסיף טשטוש ידני. התמונה לא נשלחת עד שלוחצים "שליחה" (FR-27).</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top"><p class="title">בדקו שהפרטים שלכם מוסתרים</p><div class="sub">טשטשנו 3 אזורים. רק המוצרים והמחירים חשובים לנו.</div></div>
+  <div class="body">
+    <div class="receipt">
+      <div style="text-align:center;font-weight:bold">מכולת השכונה</div>
+      <div style="text-align:center">רח׳ הרימון 4 · 26/10/2026 18:12</div>
+      <div>--------------------------------</div>
+      <div class="row"><span>חלב תנ 3% 1ל</span><span>6.20</span></div>
+      <div class="row"><span>לחם אחיד פרוס</span><span>7.00</span></div>
+      <div class="row"><span>עגבניה 1.240 ק"ג</span><span>9.90</span></div>
+      <div class="row"><span>במבה 80ג X2</span><span>8.00</span></div>
+      <div class="row"><span>הנחה: 2 ב-8</span><span>-1.80</span></div>
+      <div>--------------------------------</div>
+      <div class="row"><span>סה"כ</span><span>29.30</span></div>
+      <div class="blur">כרטיס אשראי ****1234</div>
+      <div class="blur" style="margin-top:4px">מס׳ מועדון 0541234567</div>
+      <div class="blur" style="margin-top:4px">אישור 889912</div>
+    </div>
+    <span class="btn2">✎ טשטשו עוד</span>
+  </div>
+  <div class="foot"><span class="btn">שליחה</span><span class="small center" style="display:block">צילום מחדש</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-SCAN-PROCESS: עיבוד</h2><p class="why">3 שלבים, ועד 15 שניות. אפשר לסגור את המסך ולקבל התראה בתוך האפליקציה כשהעיבוד מסתיים.</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="body center" style="justify-content:center;gap:18px">
+    <svg width="130" height="113"><use href="#m"/></svg>
+    <p class="title">קורא את החשבונית...</p>
+    <div class="card" style="width:100%;text-align:right;display:flex;flex-direction:column;gap:10px">
+      <div class="row" style="justify-content:flex-start;gap:8px"><span style="color:var(--g)">✓</span>מטשטשים פרטים אישיים</div>
+      <div class="row" style="justify-content:flex-start;gap:8px;font-weight:600"><span style="color:var(--primary)">◌</span>קוראים את השורות</div>
+      <div class="row" style="justify-content:flex-start;gap:8px;color:var(--ink-3)"><span>○</span>מזהים מוצרים</div>
+    </div>
+    <div class="banner lock" style="width:100%">🔒 התמונה לא נשמרת אצלנו אחרי הקריאה</div>
+  </div>
+  <div class="foot"><span class="small center" style="display:block">אפשר לסגור. נודיע לכם כשמוכן</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-SCAN-CONFIRM: אישור</h2><p class="why">החנות, התאריך, הפריטים שזוהו (אפשר לפתוח ולתקן), ועד 3 שאלות התאמה. לא חובה לענות על השאלות (FR-32).</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top"><p class="title">כמעט סיימנו</p></div>
+  <div class="body" style="gap:8px">
+    <div class="card"><div class="row"><div><div class="name">מכולת השכונה · רח׳ הרימון</div><div class="small">26/10/2026 · ₪29.30</div></div><span class="link">שינוי</span></div></div>
+    <div class="card"><div class="row"><span>זיהינו 4 פריטים</span><span class="link">הצגה ▾</span></div></div>
+    <div class="small" style="font-weight:600;color:var(--ink)">עזרו לנו לוודא (2)</div>
+    <div class="card tint"><div class="small">בחשבונית: ״חלב תנ 3% 1ל״</div><div class="name" style="margin:4px 0 8px">האם זה: חלב תנובה 3% 1 ליטר?</div>
+      <div class="row" style="gap:6px"><span class="btn" style="flex:1;padding:8px">כן</span><span class="btn2" style="flex:1;padding:8px">מוצר אחר</span><span class="btn2" style="flex:1;padding:8px;background:#fff">לא יודע</span></div></div>
+    <div class="card tint"><div class="small">בחשבונית: ״במבה 80ג״</div><div class="name" style="margin:4px 0 8px">האם זה: במבה אסם 80 גר׳?</div>
+      <div class="row" style="gap:6px"><span class="btn" style="flex:1;padding:8px">כן</span><span class="btn2" style="flex:1;padding:8px">מוצר אחר</span><span class="btn2" style="flex:1;padding:8px;background:#fff">לא יודע</span></div></div>
+  </div>
+  <div class="foot"><span class="btn">אישור ושמירה</span></div>
+</div></div></div>
+
+<div class="col"><h2>SHEET-BRANCH: סניף לא זוהה</h2><p class="why">בחירה מסניפים קרובים, או הוספת חנות חדשה. אפשר לדלג, ואז המחירים לא ייכנסו להשוואות (FR-31).</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top"><p class="title">כמעט סיימנו</p></div>
+  <div class="dim"></div>
+  <div class="sheet">
+    <h3>באיזו חנות קניתם?</h3>
+    <div class="small">לא הצלחנו לזהות את הסניף מהחשבונית</div>
+    <div style="height:120px;border-radius:12px;background:#EEF2EA;position:relative;overflow:hidden">
+      <svg width="100%" height="100%" viewBox="0 0 300 120" preserveAspectRatio="none"><path d="M0 60 L300 50 M150 0 L140 120" stroke="#fff" stroke-width="10"/></svg>
+      <span style="position:absolute;top:30px;right:60px">📍</span><span style="position:absolute;top:70px;right:180px">📍</span><span style="position:absolute;top:20px;right:230px">📍</span></div>
+    <div class="item"><div class="grow"><div class="name">מכולת השכונה</div><div class="small">רח׳ הרימון 4 · 200 מ׳</div></div><span class="radio on" style="padding:0"><i></i></span></div>
+    <div class="item"><div class="grow"><div class="name">סופר הפינה</div><div class="small">רח׳ התאנה 10 · 450 מ׳</div></div><span class="radio" style="padding:0"><i></i></span></div>
+    <span class="link">+ זו חנות חדשה שלא ברשימה</span>
+    <span class="btn">זו החנות</span>
+    <span class="small center" style="display:block">דילוג (המחירים לא ייכנסו להשוואות)</span>
+  </div>
+</div></div></div>
+
+<div class="col"><h2>חשבונית לא קריאה</h2><p class="why">פחות מ-50% מהשורות נקראו. 3 טיפים לצילום. אחרי 2 ניסיונות אפשר לשמור חלקית (FR-33).</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="body center" style="justify-content:center;gap:14px">
+    <svg width="110" height="96"><use href="#m"/></svg>
+    <p class="title">לא הצלחנו לקרוא את החשבונית</p>
+    <p class="sub" style="font-size:14px">זה קורה בחשבוניות דהויות או מקופלות. בואו ננסה שוב:</p>
+    <div class="card" style="width:100%;text-align:right;display:flex;flex-direction:column;gap:8px;font-size:14px">
+      <div>💡 אור טוב, בלי צל של הטלפון</div><div>📐 החשבונית ישרה ושטוחה</div><div>🧾 חשבונית ארוכה? צלמו בחלקים</div></div>
+    <span class="btn" style="width:100%">צילום מחדש</span>
+    <span class="small">ניסיון 1 מתוך 2 · 🔒 התמונה לא נשמרה אצלנו</span>
+  </div>
+</div></div></div>
+
+<div class="col"><h2>SCR-SCAN-DONE: הצלחה</h2><p class="why">תודה, השוואה נוספת למכסה, אישור שהתמונה לא נשמרת אצלנו, וסכום ההוצאות החודש (FR-48).</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="body center" style="justify-content:center;gap:14px">
+    <div style="width:160px;height:160px;border-radius:50%;background:var(--primary-tint);display:flex;align-items:center;justify-content:center"><svg width="120" height="104"><use href="#mh"/></svg></div>
+    <p class="display">תודה! 💜</p>
+    <div class="card tint" style="width:100%"><div class="name">נוספה לך השוואה אחת</div><div class="small">יש לך עכשיו 3 השוואות החודש</div></div>
+    <div class="banner lock" style="width:100%">🔒 התמונה לא נשמרת אצלנו. שמרנו רק מוצרים ומחירים · <span class="link">איך זה עובד?</span></div>
+    <div class="card" style="width:100%"><div class="row"><span>הוצאתם החודש</span><span class="price-lg">₪1,840</span></div><span class="link">להוצאות שלי ←</span></div>
+  </div>
+  <div class="foot"><span class="btn2">סגירה</span></div>
+</div></div></div>
+
+</div>
+</body>
+</html>

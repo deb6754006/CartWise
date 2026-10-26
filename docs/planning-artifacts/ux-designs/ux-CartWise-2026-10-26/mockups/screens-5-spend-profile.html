@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CartWise: הוצאות ופרופיל</title>
+<link rel="stylesheet" href="screens.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="m" viewBox="0 0 60 52"><rect x="6" y="10" width="38" height="24" rx="9" fill="#DDD6FE"/><rect x="40" y="2" width="16" height="18" rx="4" fill="#7DD3FC"/><circle cx="18" cy="20" r="2.6" fill="#374151"/><circle cx="31" cy="20" r="2.6" fill="#374151"/><path d="M19 26 Q24.5 30 30 26" stroke="#374151" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="12" cy="25" r="2" fill="#F9A8D4"/><circle cx="37" cy="25" r="2" fill="#F9A8D4"/><circle cx="14" cy="42" r="4" fill="#A8A29E"/><circle cx="34" cy="42" r="4" fill="#A8A29E"/></symbol>
+</svg>
+<header class="page">
+  <h1>מסכים 5: הוצאות, פרופיל, מכסה והרשמה</h1>
+  <p>לפי EXPERIENCE.md, §10.8 ו-§10.9. שמות הרשתות הם דוגמה בלבד.</p>
+  <nav><a href="screens-1-onboarding-home.html">1: Onboarding ובית</a><a href="screens-2-lists.html">2: רשימות וטווח</a><a href="screens-3-results.html">3: תוצאות ופירוט</a><a href="screens-4-scan.html">4: סריקה</a><a href="screens-5-spend-profile.html">5: הוצאות, פרופיל ומכסה</a></nav>
+</header>
+
+<div class="grid">
+
+<div class="col"><h2>SCR-SPEND: הוצאות</h2><p class="why">סך הכול לחודש. "לפי חנות" ו"לפי קטגוריה" מוצגים בפסים אופקיים, בלי גרף עוגה. מתחת, החשבוניות של החודש (FR-50).</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top"><p class="title">ההוצאות שלי</p>
+    <div class="row" style="margin-top:8px"><span class="link">→ ספטמבר</span><span class="name">אוקטובר 2026</span><span style="color:var(--ink-3)">נובמבר ←</span></div></div>
+  <div class="body" style="gap:8px">
+    <div class="card tint center" style="display:flex;flex-direction:column"><span class="small">סה״כ מ-7 חשבוניות</span><span class="price-lg" style="font-size:28px">₪1,840</span></div>
+    <div class="seg"><span>לפי חנות</span><span class="on">לפי קטגוריה</span></div>
+    <div class="card bars">
+      <div><div class="row small"><span style="color:var(--ink)">מוצרי חלב</span><span>₪412</span></div><div class="track"><div class="fill" style="width:62%"></div></div></div>
+      <div><div class="row small"><span style="color:var(--ink)">ירקות ופירות</span><span>₪356</span></div><div class="track"><div class="fill" style="width:54%"></div></div></div>
+      <div><div class="row small"><span style="color:var(--ink)">תינוקות</span><span>₪298</span></div><div class="track"><div class="fill" style="width:45%"></div></div></div>
+      <div><div class="row small"><span style="color:var(--ink)">לחם ומאפים</span><span>₪176</span></div><div class="track"><div class="fill" style="width:27%"></div></div></div>
+      <div><div class="row small"><span style="color:var(--ink)">אחר</span><span>₪98</span></div><div class="track"><div class="fill" style="width:15%;background:var(--ink-3)"></div></div></div>
+    </div>
+    <div class="small" style="font-weight:600;color:var(--ink)">חשבוניות</div>
+    <div class="card"><div class="row"><div><div class="name">רשת ב׳ · סניף הגבעה</div><div class="small">22/10 · 38 פריטים</div></div><span class="price">₪418.60</span></div></div>
+  </div>
+  <div class="nav"><span>בית</span><span>רשימות</span><span class="scan">סריקה</span><span class="on">הוצאות</span><span>פרופיל</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-SPEND: מצב ריק</h2><p class="why">עוד לא נסרקו חשבוניות. ההסבר מראה מה מרוויחים מסריקה.</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top"><p class="title">ההוצאות שלי</p></div>
+  <div class="body center" style="justify-content:center;gap:14px">
+    <svg width="120" height="104"><use href="#m"/></svg>
+    <p class="title">עוד לא סרקתם חשבוניות</p>
+    <p class="sub" style="font-size:14.5px">כל סריקה מוסיפה השוואה, ומראה לכם לאן הולך הכסף בכל חודש</p>
+    <span class="btn" style="width:100%">לסריקה ראשונה 🧾</span>
+  </div>
+  <div class="nav"><span>בית</span><span>רשימות</span><span class="scan">סריקה</span><span class="on">הוצאות</span><span>פרופיל</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-PROFILE: פרופיל</h2><p class="why">ההעדפות שמשפיעות על ההשוואה (מועדונים, מותגים, טווח, סף כיסוי), והחשבון והפרטיות.</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top decor"><p class="title">פרופיל</p><div class="sub">מחוברים עם Google · השם שמור רק בטלפון</div></div>
+  <div class="body" style="gap:8px">
+    <div class="small" style="font-weight:600;color:var(--ink)">ההשוואה שלי</div>
+    <div class="card" style="padding:2px 14px">
+      <div class="item"><div class="grow">המועדונים שלי</div><span class="small">2 ←</span></div>
+      <div class="item"><div class="grow">מותגים רצויים</div><span class="small">5 ←</span></div>
+      <div class="item"><div class="grow">טווח ברירת מחדל</div><span class="small">🚗 15 דק׳ ←</span></div>
+      <div class="item"><div class="grow">כיסוי מינימלי</div><span class="small">60% ←</span></div>
+    </div>
+    <div class="small" style="font-weight:600;color:var(--ink)">חשבון ופרטיות</div>
+    <div class="card" style="padding:2px 14px">
+      <div class="item"><div class="grow">מדיניות פרטיות</div><span class="small">←</span></div>
+      <div class="item"><div class="grow">התנתקות</div><span class="small">←</span></div>
+      <div class="item"><div class="grow" style="color:var(--err)">מחיקת חשבון</div><span class="small">←</span></div>
+    </div>
+  </div>
+  <div class="nav"><span>בית</span><span>רשימות</span><span class="scan">סריקה</span><span>הוצאות</span><span class="on">פרופיל</span></div>
+</div></div></div>
+
+<div class="col"><h2>SCR-BRANDS: מותגים רצויים</h2><p class="why">חיפוש מותגים והוספה לרשימה. המסך מסביר שהמותגים משמשים גם לסינון לפי כשרות (FR-4).</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top"><div class="bar"><span class="back">→</span><p class="title">מותגים רצויים</p></div>
+    <div class="sub">כשפריט מוגדר ״מהמותגים שלי״, נשווה רק את המותגים האלה. כך אפשר לסנן גם לפי כשרות.</div></div>
+  <div class="body" style="gap:8px">
+    <div class="input"><span>🔍 חיפוש מותג...</span></div>
+    <div class="chips" style="margin:0"><span class="chip">תנובה ✕</span><span class="chip">אסם ✕</span><span class="chip">עלית ✕</span><span class="chip">שטראוס ✕</span><span class="chip">מותג פרטי רשת ב׳ ✕</span></div>
+    <div class="card sky small">💡 בלי מותגים ברשימה, ההשוואה תבחר את הזול ביותר מכל מותג</div>
+  </div>
+  <div class="nav"><span>בית</span><span>רשימות</span><span class="scan">סריקה</span><span>הוצאות</span><span class="on">פרופיל</span></div>
+</div></div></div>
+
+<div class="col"><h2>SHEET-QUOTA: המכסה נגמרה</h2><p class="why">ההסבר בלי לחץ. הרשימה נשמרת. הדרך להמשיך היא סריקה (FR-49).</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top"><p class="title">השלמות</p></div>
+  <div class="dim"></div>
+  <div class="sheet center">
+    <svg width="96" height="84"><use href="#m"/></svg>
+    <h3>ניצלתם את ההשוואות של החודש</h3>
+    <p class="sub" style="font-size:14px;margin:0">כל חשבונית שתסרקו מוסיפה השוואה. ב-1 בנובמבר תקבלו 4 השוואות חדשות.</p>
+    <div class="banner lock" style="width:100%">✓ הרשימה שלכם שמורה</div>
+    <span class="btn" style="width:100%">סריקת חשבונית 🧾</span>
+    <span class="btn2" style="width:100%">סגירה</span>
+  </div>
+</div></div></div>
+
+<div class="col"><h2>SHEET-SIGNIN: הרשמה</h2><p class="why">ההרשמה מוצגת רק כשצריך: לפני סריקה, או כשהמכסה נגמרה. הרשימות עוברות לחשבון (FR-2).</p>
+<div class="phone"><div class="screen">
+  <div class="status"><span>9:41</span><span>●●●</span></div>
+  <div class="top"><p class="title">בית</p></div>
+  <div class="dim"></div>
+  <div class="sheet">
+    <h3>כדי לסרוק ולעקוב אחרי ההוצאות, צריך להתחבר</h3>
+    <div class="small">הרשימות וההעדפות שלכם יישמרו ויעברו לחשבון</div>
+    <span class="btn2" style="background:#fff;border:1px solid var(--line-2);color:var(--ink)">G  המשך עם Google</span>
+    <span class="btn" style="background:#111827"> המשך עם Apple</span>
+    <div class="banner lock">🔒 אנחנו לא שומרים שם, טלפון או כתובת</div>
+    <span class="small center" style="display:block">לא עכשיו</span>
+  </div>
+</div></div></div>
+
+</div>
+</body>
+</html>

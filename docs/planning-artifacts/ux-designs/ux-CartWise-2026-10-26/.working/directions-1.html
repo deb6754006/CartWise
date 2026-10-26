@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CartWise: כיווני עיצוב</title>
+<style>
+/* Shared page chrome */
+* { box-sizing: border-box; }
+body { margin: 0; background: #E9EBF0; font-family: "Segoe UI", Arial, "Noto Sans Hebrew", sans-serif; color: #1F2937; }
+header.page { padding: 24px 16px 8px; max-width: 1600px; margin: 0 auto; }
+header.page h1 { margin: 0 0 6px; font-size: 24px; }
+header.page p { margin: 0; color: #4B5563; max-width: 900px; line-height: 1.5; }
+.grid { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; padding: 24px 16px 48px; max-width: 1600px; margin: 0 auto; }
+.col { width: 360px; max-width: 100%; }
+.col h2 { font-size: 18px; margin: 0 0 4px; }
+.col .why { font-size: 13.5px; color: #4B5563; line-height: 1.5; margin: 0 0 12px; min-height: 80px; }
+.phone { width: 360px; max-width: 100%; height: 760px; border-radius: 36px; overflow: hidden; position: relative; box-shadow: 0 10px 30px rgba(17,24,39,.18); border: 8px solid #111827; display: flex; flex-direction: column; }
+.screen { flex: 1; overflow: hidden; display: flex; flex-direction: column; background: var(--bg); color: var(--ink); }
+.status { height: 24px; font-size: 11px; display: flex; justify-content: space-between; padding: 4px 18px; color: var(--ink-2); }
+.top { padding: 6px 16px 10px; position: relative; }
+.top .title { font-size: 20px; font-weight: 700; margin: 0; }
+.top .sub { font-size: 13px; color: var(--ink-2); margin-top: 2px; }
+.chips { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.chip { font-size: 12.5px; padding: 6px 10px; border-radius: var(--chip-r); background: var(--chip-bg); color: var(--chip-ink); font-weight: 600; }
+.chip.quota { background: transparent; border: 1px dashed var(--line); color: var(--ink-2); font-weight: 500; }
+.seg { display: flex; margin: 0 16px 10px; background: var(--seg-bg); border-radius: var(--chip-r); padding: 3px; }
+.seg span { flex: 1; text-align: center; font-size: 13px; padding: 6px; border-radius: var(--chip-r); color: var(--ink-2); }
+.seg span.on { background: var(--card); color: var(--ink); font-weight: 700; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.list { padding: 0 16px; display: flex; flex-direction: column; gap: var(--gap); overflow: hidden; flex: 1; }
+.card { background: var(--card); border-radius: var(--r); padding: 12px 14px; border: var(--card-border); box-shadow: var(--shadow); }
+.card.best { border: 2px solid var(--primary); }
+.badge { display: inline-block; font-size: 11.5px; font-weight: 700; color: var(--on-primary); background: var(--primary); padding: 3px 8px; border-radius: 999px; margin-bottom: 6px; }
+.row1 { display: flex; justify-content: space-between; align-items: baseline; }
+.name { font-weight: 700; font-size: 16px; }
+.price { font-weight: 800; font-size: 20px; color: var(--price); }
+.meta { display: flex; gap: 10px; font-size: 12.5px; color: var(--ink-2); margin-top: 6px; flex-wrap: wrap; align-items: center; }
+.delta { font-size: 12.5px; color: var(--ink-2); }
+.est { font-size: 11.5px; background: var(--est-bg); color: var(--est-ink); padding: 2px 6px; border-radius: 6px; }
+/* Reliability: shape + color + text (NFR-17) */
+.rel { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.rel i { display: inline-block; width: 10px; height: 10px; }
+.rel.g i { background: #16A34A; border-radius: 50%; }
+.rel.y i { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 10px solid #CA8A04; }
+.rel.r i { background: #DC2626; border-radius: 2px; }
+.collapsed { font-size: 13px; color: var(--ink-2); padding: 10px 14px; border-radius: var(--r); border: 1px dashed var(--line); display: flex; justify-content: space-between; }
+.save { margin: 0 16px 10px; border-radius: var(--r); padding: 10px 12px; background: var(--save-bg); color: var(--save-ink); display: flex; gap: 10px; align-items: center; font-size: 14px; }
+.save b { font-size: 16px; }
+.nav { height: 60px; display: flex; justify-content: space-around; align-items: center; background: var(--nav-bg); border-top: 1px solid var(--line); font-size: 11px; color: var(--ink-2); }
+.nav span { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.nav span::before { content: ""; width: 22px; height: 22px; border-radius: 7px; background: var(--line); display: block; }
+.nav span.on { color: var(--primary); font-weight: 700; }
+.nav span.on::before { background: var(--primary); }
+.nav span.scan::before { width: 44px; height: 44px; border-radius: 50%; margin-top: -22px; background: var(--primary); box-shadow: 0 4px 10px rgba(124,58,237,.35); }
+.mascot { display: block; }
+.legend { font-size: 13px; color: #374151; max-width: 1600px; margin: 0 auto; padding: 0 16px 32px; line-height: 1.6; }
+
+/* ---- Direction A: soft & rounded ----
+   bg #F6F7FB, card #FFFFFF, primary #7C3AED, light-blue #E0F2FE, ink #1F2937, ink-2 #6B7280 */
+.dirA { --bg:#F6F7FB; --ink:#1F2937; --ink-2:#6B7280; --card:#FFFFFF; --r:20px; --chip-r:999px; --chip-bg:#E0F2FE; --chip-ink:#075985;
+  --seg-bg:#ECEEF5; --gap:10px; --card-border:1px solid #EEF0F6; --shadow:0 2px 8px rgba(31,41,55,.06); --primary:#7C3AED; --on-primary:#fff;
+  --price:#1F2937; --est-bg:#FEF3C7; --est-ink:#92400E; --line:#E5E7EB; --save-bg:#EDE9FE; --save-ink:#4C1D95; --nav-bg:#FFFFFF; }
+
+/* ---- Direction B: classic & clean ----
+   bg #F3F4F6, card #FFFFFF, primary #6D28D9, light-blue #DBEAFE, ink #111827, ink-2 #4B5563, radius 10 */
+.dirB { --bg:#F3F4F6; --ink:#111827; --ink-2:#4B5563; --card:#FFFFFF; --r:10px; --chip-r:8px; --chip-bg:#FFFFFF; --chip-ink:#374151;
+  --seg-bg:#E5E7EB; --gap:8px; --card-border:1px solid #E5E7EB; --shadow:none; --primary:#6D28D9; --on-primary:#fff;
+  --price:#6D28D9; --est-bg:#F3F4F6; --est-ink:#92400E; --line:#D1D5DB; --save-bg:#FFFFFF; --save-ink:#111827; --nav-bg:#FFFFFF; }
+.dirB .chip { border: 1px solid #D1D5DB; }
+.dirB .save { border: 1px solid #DDD6FE; }
+
+/* ---- Direction C: cheerful & lively ----
+   header gradient #7C3AED -> #A78BFA, chips #BAE6FD, bg #F5F3FF, radius 24 */
+.dirC { --bg:#F5F3FF; --ink:#1E1B4B; --ink-2:#5B5F7A; --card:#FFFFFF; --r:24px; --chip-r:999px; --chip-bg:#BAE6FD; --chip-ink:#0C4A6E;
+  --seg-bg:#EDE9FE; --gap:12px; --card-border:none; --shadow:0 6px 16px rgba(76,29,149,.10); --primary:#7C3AED; --on-primary:#fff;
+  --price:#5B21B6; --est-bg:#FEF9C3; --est-ink:#854D0E; --line:#DDD6FE; --save-bg:#0EA5E9; --save-ink:#FFFFFF; --nav-bg:#FFFFFF; }
+.dirC .top { background: linear-gradient(135deg,#7C3AED,#A78BFA); color: #fff; padding-bottom: 18px; border-radius: 0 0 28px 28px; margin-bottom: 12px; }
+.dirC .top .sub { color: #EDE9FE; }
+.dirC .status { background: #7C3AED; color: #EDE9FE; }
+.dirC .chip.quota { color: #EDE9FE; border-color: #C4B5FD; }
+
+/* ---- Direction D: warm & homey ----
+   bg #FBFAF7 (warm off-white), card #FFFFFF, lilac #A78BFA, sky #7DD3FC, ink #374151, ink-2 #78716C */
+.dirD { --bg:#FBFAF7; --ink:#374151; --ink-2:#78716C; --card:#FFFFFF; --r:18px; --chip-r:12px; --chip-bg:#F0F9FF; --chip-ink:#0369A1;
+  --seg-bg:#F3F1EC; --gap:12px; --card-border:1px solid #EFECE6; --shadow:0 1px 0 #EFECE6; --primary:#8B5CF6; --on-primary:#fff;
+  --price:#374151; --est-bg:#FEF3C7; --est-ink:#92400E; --line:#E7E5E4; --save-bg:#F5F3FF; --save-ink:#5B21B6; --nav-bg:#FFFDF9; }
+.dirD .top::after { content:""; position:absolute; left:-30px; top:-40px; width:150px; height:150px; border-radius:50%; background:#E0F2FE; z-index:0; }
+.dirD .top > * { position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+<header class="page">
+  <h1>CartWise: 4 כיווני עיצוב למסך התוצאות</h1>
+  <p>אותו מסך עם אותו תוכן (הרשימה של רחל, ברכב עד 15 דקות) בארבעה כיוונים שונים. כולם על בסיס בהיר ובצבעים שבחרת: אפור, תכלת וסגול חי. בכל כיוון הדמות הקטנה (עגלה עם פרצוף) נראית אחרת. אפשר לבחור כיוון אחד, או לשלב, למשל "הצבעים של C עם הצפיפות של B". שמות הרשתות הם דוגמה בלבד.</p>
+</header>
+
+<div class="grid">
+
+<!-- ===== A ===== -->
+<div class="col">
+  <h2>A: רך ומעוגל</h2>
+  <p class="why">כרטיסים לבנים ומעוגלים מאוד, תכלת עדין בתגיות, וסגול רק כהדגשה. הדמות מציצה בכותרת. האווירה רגועה וידידותית, והמסך לא עמוס.</p>
+  <div class="phone dirA"><div class="screen">
+    <div class="status"><span>9:41</span><span>●●●</span></div>
+    <div class="top">
+      <svg class="mascot" width="56" height="44" viewBox="0 0 56 44" style="position:absolute;left:16px;top:2px" aria-hidden="true">
+        <rect x="6" y="6" width="40" height="26" rx="10" fill="#C4B5FD"/><path d="M46 12 L54 6" stroke="#7C3AED" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="19" cy="17" r="3" fill="#1F2937"/><circle cx="33" cy="17" r="3" fill="#1F2937"/>
+        <path d="M20 24 Q26 29 32 24" stroke="#1F2937" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <circle cx="14" cy="23" r="2.5" fill="#F9A8D4"/><circle cx="38" cy="23" r="2.5" fill="#F9A8D4"/>
+        <circle cx="16" cy="38" r="4" fill="#7DD3FC"/><circle cx="36" cy="38" r="4" fill="#7DD3FC"/></svg>
+      <p class="title">איפה הכי משתלם?</p>
+      <div class="sub">הקנייה השבועית · 20 פריטים</div>
+      <div class="chips"><span class="chip">🚗 רכב · עד 15 דק׳</span><span class="chip quota">נשארו 3 השוואות</span></div>
+    </div>
+    <div class="seg"><span class="on">רשימה</span><span>מפה</span></div>
+    <div class="save">💜 <span>חוסכים <b>₪62.90</b> לעומת החנות היקרה בטווח</span></div>
+    <div class="list">
+      <div class="card best"><span class="badge">הכי משתלם</span>
+        <div class="row1"><span class="name">רשת ב׳ · סניף הגבעה</span><span class="price">₪412.30</span></div>
+        <div class="meta"><span>20/20 פריטים</span><span>9 דק׳</span><span class="rel g"><i></i>עדכני</span></div></div>
+      <div class="card">
+        <div class="row1"><span class="name">רשת א׳ · מרכז</span><span class="price">₪438.90</span></div>
+        <div class="meta"><span class="delta">+₪26.60</span><span>19/20</span><span class="est">כולל הערכה ₪7.90</span><span>12 דק׳</span><span class="rel y"><i></i>בינוני</span></div></div>
+      <div class="card">
+        <div class="row1"><span class="name">רשת ג׳ · הקניון</span><span class="price">₪475.20</span></div>
+        <div class="meta"><span class="delta">+₪62.90</span><span>20/20</span><span>14 דק׳</span><span class="rel g"><i></i>עדכני</span></div></div>
+      <div class="collapsed"><span>חנויות עם נתונים חלקיים (1)</span><span>▾</span></div>
+    </div>
+    <div class="nav"><span>בית</span><span class="on">רשימות</span><span class="scan">סריקה</span><span>הוצאות</span><span>פרופיל</span></div>
+  </div></div>
+</div>
+
+<!-- ===== B ===== -->
+<div class="col">
+  <h2>B: קלאסי ונקי</h2>
+  <p class="why">בסיס אפור, קווים דקים, פינות מעוגלות מעט, והמחיר בסגול. הצפיפות גבוהה יותר, כך שיותר חנויות נכנסות למסך. הדמות היא סמל קטן ליד הכותרת. נראה כמו אפליקציה אמינה ומסודרת, ופחות "משחקית".</p>
+  <div class="phone dirB"><div class="screen">
+    <div class="status"><span>9:41</span><span>●●●</span></div>
+    <div class="top">
+      <p class="title" style="display:flex;align-items:center;gap:8px">
+        <svg width="28" height="24" viewBox="0 0 56 44" aria-hidden="true"><rect x="6" y="6" width="40" height="26" rx="8" fill="#6D28D9"/><circle cx="19" cy="17" r="3" fill="#fff"/><circle cx="33" cy="17" r="3" fill="#fff"/><path d="M20 24 Q26 28 32 24" stroke="#fff" stroke-width="2" fill="none"/><circle cx="16" cy="38" r="4" fill="#9CA3AF"/><circle cx="36" cy="38" r="4" fill="#9CA3AF"/></svg>
+        איפה הכי משתלם?</p>
+      <div class="sub">הקנייה השבועית · 20 פריטים</div>
+      <div class="chips"><span class="chip">🚗 רכב · עד 15 דק׳</span><span class="chip">מועדונים: 2</span><span class="chip quota">נשארו 3 השוואות</span></div>
+    </div>
+    <div class="seg"><span class="on">רשימה</span><span>מפה</span></div>
+    <div class="save"><span>הפרש בטווח: <b style="color:#6D28D9">₪62.90</b></span></div>
+    <div class="list">
+      <div class="card best"><span class="badge">הכי משתלם</span>
+        <div class="row1"><span class="name">רשת ב׳ · סניף הגבעה</span><span class="price">₪412.30</span></div>
+        <div class="meta"><span>20/20</span><span>9 דק׳</span><span class="rel g"><i></i>עדכני</span></div></div>
+      <div class="card">
+        <div class="row1"><span class="name">רשת א׳ · מרכז</span><span class="price">₪438.90</span></div>
+        <div class="meta"><span class="delta">+₪26.60</span><span>19/20</span><span class="est">הערכה ₪7.90</span><span>12 דק׳</span><span class="rel y"><i></i>בינוני</span></div></div>
+      <div class="card">
+        <div class="row1"><span class="name">רשת ג׳ · הקניון</span><span class="price">₪475.20</span></div>
+        <div class="meta"><span class="delta">+₪62.90</span><span>20/20</span><span>14 דק׳</span><span class="rel g"><i></i>עדכני</span></div></div>
+      <div class="card">
+        <div class="row1"><span class="name">רשת א׳ · רמות</span><span class="price">₪441.10</span></div>
+        <div class="meta"><span class="delta">+₪28.80</span><span>20/20</span><span>15 דק׳</span><span class="rel r"><i></i>ישן</span></div></div>
+      <div class="collapsed"><span>חנויות עם נתונים חלקיים (1)</span><span>▾</span></div>
+    </div>
+    <div class="nav"><span>בית</span><span class="on">רשימות</span><span class="scan">סריקה</span><span>הוצאות</span><span>פרופיל</span></div>
+  </div></div>
+</div>
+
+<!-- ===== C ===== -->
+<div class="col">
+  <h2>C: שמח ותוסס</h2>
+  <p class="why">כותרת בגרדיאנט סגול, פס חיסכון בתכלת, ופינות מעוגלות מאוד. הדמות "חוגגת" ליד החיסכון. הכי שמח וצבעוני מבין הכיוונים, אבל גם הכי בולט, ויש סכנה שירגיש ילדותי.</p>
+  <div class="phone dirC"><div class="screen">
+    <div class="status"><span>9:41</span><span>●●●</span></div>
+    <div class="top">
+      <p class="title">איפה הכי משתלם?</p>
+      <div class="sub">הקנייה השבועית · 20 פריטים</div>
+      <div class="chips"><span class="chip">🚗 רכב · עד 15 דק׳</span><span class="chip quota">נשארו 3 השוואות</span></div>
+    </div>
+    <div class="save">
+      <svg width="46" height="40" viewBox="0 0 56 44" aria-hidden="true"><rect x="6" y="8" width="40" height="24" rx="10" fill="#FFFFFF"/><path d="M4 6 L0 0 M52 6 L56 0" stroke="#FDE68A" stroke-width="3" stroke-linecap="round"/><path d="M15 16 Q19 12 23 16 M29 16 Q33 12 37 16" stroke="#1E1B4B" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M19 22 Q26 30 33 22" fill="#1E1B4B"/><circle cx="16" cy="38" r="4" fill="#1E1B4B"/><circle cx="36" cy="38" r="4" fill="#1E1B4B"/></svg>
+      <span>יש! חוסכים <b>₪62.90</b> השבוע</span></div>
+    <div class="seg"><span class="on">רשימה</span><span>מפה</span></div>
+    <div class="list">
+      <div class="card best"><span class="badge">הכי משתלם 🏆</span>
+        <div class="row1"><span class="name">רשת ב׳ · סניף הגבעה</span><span class="price">₪412.30</span></div>
+        <div class="meta"><span>20/20 פריטים</span><span>9 דק׳</span><span class="rel g"><i></i>עדכני</span></div></div>
+      <div class="card">
+        <div class="row1"><span class="name">רשת א׳ · מרכז</span><span class="price">₪438.90</span></div>
+        <div class="meta"><span class="delta">+₪26.60</span><span>19/20</span><span class="est">כולל הערכה</span><span>12 דק׳</span><span class="rel y"><i></i>בינוני</span></div></div>
+      <div class="card">
+        <div class="row1"><span class="name">רשת ג׳ · הקניון</span><span class="price">₪475.20</span></div>
+        <div class="meta"><span class="delta">+₪62.90</span><span>20/20</span><span>14 דק׳</span><span class="rel g"><i></i>עדכני</span></div></div>
+    </div>
+    <div class="nav"><span>בית</span><span class="on">רשימות</span><span class="scan">סריקה</span><span>הוצאות</span><span>פרופיל</span></div>
+  </div></div>
+</div>
+
+<!-- ===== D ===== -->
+<div class="col">
+  <h2>D: חם וביתי</h2>
+  <p class="why">רקע לבן חמים, כמו נייר, וטקסט אפור-חם. הסגול רך יותר (לילך), עם עיגול תכלת דקורטיבי מאחורי הכותרת. הדמות מחזיקה שקית ומדברת בבועה. זה הכיוון הכי "משפחתי" וביתי, והוא פחות טכנולוגי.</p>
+  <div class="phone dirD"><div class="screen">
+    <div class="status"><span>9:41</span><span>●●●</span></div>
+    <div class="top">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <svg width="54" height="50" viewBox="0 0 60 52" aria-hidden="true"><rect x="6" y="10" width="38" height="24" rx="9" fill="#DDD6FE"/><rect x="40" y="2" width="16" height="18" rx="4" fill="#7DD3FC"/><circle cx="18" cy="20" r="2.6" fill="#374151"/><circle cx="31" cy="20" r="2.6" fill="#374151"/><path d="M19 26 Q24.5 30 30 26" stroke="#374151" stroke-width="2" fill="none" stroke-linecap="round"/><circle cx="14" cy="42" r="4" fill="#A8A29E"/><circle cx="34" cy="42" r="4" fill="#A8A29E"/></svg>
+        <div><p class="title">שלום רחל 👋</p><div class="sub">מצאתי לך איפה הכי משתלם לקנות השבוע</div></div>
+      </div>
+      <div class="chips"><span class="chip">🚗 רכב · עד 15 דק׳</span><span class="chip">הקנייה השבועית · 20</span><span class="chip quota">נשארו 3 השוואות</span></div>
+    </div>
+    <div class="seg"><span class="on">רשימה</span><span>מפה</span></div>
+    <div class="list">
+      <div class="card best"><span class="badge">הכי משתלם</span>
+        <div class="row1"><span class="name">רשת ב׳ · סניף הגבעה</span><span class="price">₪412.30</span></div>
+        <div class="meta"><span>20/20 פריטים</span><span>9 דק׳</span><span class="rel g"><i></i>עדכני</span></div>
+        <div class="meta" style="color:#5B21B6">חוסכים ₪62.90 לעומת החנות היקרה בטווח</div></div>
+      <div class="card">
+        <div class="row1"><span class="name">רשת א׳ · מרכז</span><span class="price">₪438.90</span></div>
+        <div class="meta"><span class="delta">+₪26.60</span><span>19/20</span><span class="est">כולל הערכה ₪7.90</span><span>12 דק׳</span><span class="rel y"><i></i>בינוני</span></div></div>
+      <div class="card">
+        <div class="row1"><span class="name">רשת ג׳ · הקניון</span><span class="price">₪475.20</span></div>
+        <div class="meta"><span class="delta">+₪62.90</span><span>20/20</span><span>14 דק׳</span><span class="rel g"><i></i>עדכני</span></div></div>
+      <div class="collapsed"><span>חנויות עם נתונים חלקיים (1)</span><span>▾</span></div>
+    </div>
+    <div class="nav"><span>בית</span><span class="on">רשימות</span><span class="scan">סריקה</span><span>הוצאות</span><span>פרופיל</span></div>
+  </div></div>
+</div>
+
+</div>
+<div class="legend">
+  <b>מה משותף לכל הכיוונים (ונגזר מה-PRD):</b>
+  <ul>
+    <li><b>אייקון אמינות:</b> משלב צורה, צבע וטקסט. ● ירוק "עדכני", ▲ צהוב "בינוני", ■ אדום "ישן".</li>
+    <li><b>חנות מומלצת:</b> מסומנת "הכי משתלם".</li>
+    <li><b>שאר החנויות:</b> לכל חנות מוצגים ההפרש מהזולה ביותר, הכיסוי, ההערכה אם יש, וזמן ההגעה, לידיעה בלבד.</li>
+    <li><b>חנויות עם כיסוי מתחת לסף:</b> מוצגות ברשימה מקופלת.</li>
+    <li><b>מכסה:</b> מוצגת בכותרת.</li>
+    <li><b>סריקה:</b> כפתור מרכזי בסרגל הניווט.</li>
+  </ul>
+</div>
+</body>
+</html>
