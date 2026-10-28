@@ -1,0 +1,6 @@
+# Local machine settings (e.g. CARTWISE_EXTRA_CA). Never commit.
+.env
+.env.*
+*.crt
+!no-extra-ca.crt
+*.pem

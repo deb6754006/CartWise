@@ -1,0 +1,44 @@
+# Local dev only. The prod compose (caddy, worker, ARM64) is added at deployment time.
+# The Postgres credentials below are non-secret dev values.
+name: cartwise
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: cartwise
+      POSTGRES_PASSWORD: cartwise
+      POSTGRES_DB: cartwise
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cartwise -d cartwise"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ../backend
+      secrets:
+        - extra_ca
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://cartwise:cartwise@db:5432/cartwise
+      ENV: dev
+      LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+
+volumes:
+  db-data:
+
+secrets:
+  # Extra CA bundle for the image build only. Defaults to an empty file.
+  # On a TLS-intercepting network, set CARTWISE_EXTRA_CA to the full CA bundle path.
+  extra_ca:
+    file: ${CARTWISE_EXTRA_CA:-./no-extra-ca.crt}
