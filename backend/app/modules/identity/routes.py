@@ -3,13 +3,19 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Body, Depends, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.auth import Subject, auth_required, require_subject
+from app.core.auth import Subject, auth_required, require_firebase_uid, require_subject
 from app.core.db import get_session
 from app.modules.identity import service
-from app.modules.identity.schemas import DeviceRegisterIn, DeviceRegisterOut, MeOut
+from app.modules.identity.schemas import (
+    DeviceRegisterIn,
+    DeviceRegisterOut,
+    LinkIn,
+    LinkOut,
+    MeOut,
+)
 
 # No prefix: identity owns top-level resources (/v1/devices, /v1/me).
 router = APIRouter(tags=["identity"])
@@ -31,6 +37,25 @@ def register_device(
     return DeviceRegisterOut(
         device_id=reg.device_id, device_token=reg.device_token, expires_at=reg.expires_at
     )
+
+
+@router.post(
+    "/auth/link",
+    status_code=status.HTTP_201_CREATED,
+    responses={200: {"model": LinkOut, "description": "User already existed"}},
+)
+def link(
+    response: Response,
+    firebase_uid: Annotated[str, Depends(require_firebase_uid)],
+    session: Annotated[Session, Depends(get_session)],
+    body: Annotated[LinkIn | None, Body()] = None,
+) -> LinkOut:
+    """Link this device to the Google account behind the Firebase ID token (Bearer)."""
+    device_token = body.device_token if body is not None else None
+    user_id, created = service.link(session, firebase_uid, device_token)
+    if not created:
+        response.status_code = status.HTTP_200_OK
+    return LinkOut(user_id=user_id)
 
 
 @router.get("/me")

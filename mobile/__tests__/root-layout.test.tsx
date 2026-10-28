@@ -27,10 +27,17 @@ const mockEnsureDeviceToken = jest.fn<Promise<string | null>, []>();
 jest.mock('../src/identity/device', () => ({
   ensureDeviceToken: () => mockEnsureDeviceToken(),
 }));
+const mockStartSessionSync = jest.fn<Promise<void>, []>();
+jest.mock('../src/identity/session', () => ({
+  startSessionSync: () => mockStartSessionSync(),
+}));
 
 describe('root layout', () => {
   // By default the registration never settles: rendering must not wait for it.
-  beforeEach(() => mockEnsureDeviceToken.mockReturnValue(new Promise(() => {})));
+  beforeEach(() => {
+    mockEnsureDeviceToken.mockReturnValue(new Promise(() => {}));
+    mockStartSessionSync.mockReturnValue(new Promise(() => {}));
+  });
   afterEach(() => jest.clearAllMocks());
 
   it('registers the device in the background without blocking rendering', () => {
@@ -50,6 +57,24 @@ describe('root layout', () => {
     expect(catchSpy).toHaveBeenCalledWith(expect.any(Function));
     const handler = catchSpy.mock.calls[0][0] as (e: unknown) => unknown;
     expect(() => handler(new Error('offline'))).not.toThrow();
+    await expect(catchSpy.mock.results[0].value).resolves.toBeUndefined();
+    expect(screen.getByText('stack')).toBeTruthy();
+  });
+
+  it('loads the user session in the background, without blocking rendering', () => {
+    mockUseFonts.mockReturnValue([true, null]);
+    render(<RootLayout />);
+    expect(screen.getByText('stack')).toBeTruthy();
+    expect(mockStartSessionSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('swallows a failed session load', async () => {
+    const rejected = Promise.reject(new Error('keystore'));
+    const catchSpy = jest.spyOn(rejected, 'catch');
+    mockStartSessionSync.mockReturnValue(rejected);
+    mockUseFonts.mockReturnValue([true, null]);
+    render(<RootLayout />);
+    expect(catchSpy).toHaveBeenCalledWith(expect.any(Function));
     await expect(catchSpy.mock.results[0].value).resolves.toBeUndefined();
     expect(screen.getByText('stack')).toBeTruthy();
   });

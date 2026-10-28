@@ -86,6 +86,16 @@ const spacing = {
 const touchTarget = 48;
 
 const components = {
+  /** Bottom sheets (white, top corners rounded), per the SHEET-* mockups. */
+  sheet: {
+    background: colors.surfaceRaised,
+    radius: rounded.lg,
+    grabber: colors.borderStrong,
+    grabberWidth: 40,
+    grabberHeight: 4,
+    /** Dims the screen behind a sheet (inkPrimary at 35%). */
+    scrim: 'rgba(55, 65, 81, 0.35)',
+  },
   tabBar: {
     background: '#FFFDF9',
     active: colors.primary,

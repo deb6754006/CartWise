@@ -190,7 +190,7 @@ def test_devices_migration_roundtrip(db_url: str) -> None:
     cfg = alembic_config(url)
     eng = make_engine(url)
     try:
-        command.upgrade(cfg, "head")
+        command.upgrade(cfg, "0002")  # 0003 adds the users FK and index (test_link.py)
         insp = inspect(eng)
         assert "devices" in insp.get_table_names()
         cols = {c["name"]: c for c in insp.get_columns("devices")}

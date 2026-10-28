@@ -22,3 +22,12 @@ class DeviceRegisterOut(BaseModel):
 class MeOut(BaseModel):
     kind: Literal["user", "device"]
     id: uuid.UUID
+
+
+class LinkIn(BaseModel):
+    # The guest's device token. Omitted: the user is created or found, no device is linked.
+    device_token: str | None = Field(default=None, min_length=1, max_length=4096)
+
+
+class LinkOut(BaseModel):
+    user_id: uuid.UUID

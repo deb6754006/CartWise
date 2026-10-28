@@ -11,6 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
 import { ensureDeviceToken } from '../src/identity/device';
+import { startSessionSync } from '../src/identity/session';
 import { ensureRTL } from '../src/rtl';
 import { tokens } from '../src/theme/tokens';
 
@@ -31,6 +32,8 @@ export default function RootLayout() {
     // Guest identity: register in the background. Never blocks rendering; failures are
     // retried on the next launch or the next API request.
     ensureDeviceToken().catch(() => {});
+    // Registered user: read the stored session and keep it in step with Firebase.
+    startSessionSync().catch(() => {});
   }, []);
 
   useEffect(() => {

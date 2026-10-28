@@ -6,6 +6,13 @@ jest.mock('../src/identity/device', () => ({
   ensureDeviceToken: () => mockEnsure(),
   clearDeviceToken: (rejected?: string) => mockClear(rejected),
 }));
+// Signed out unless a test says otherwise.
+const mockUserToken = jest.fn<Promise<string | null>, [boolean?]>(async () => null);
+const mockSignOut = jest.fn<Promise<void>, []>(async () => {});
+jest.mock('../src/identity/session', () => ({
+  getUserIdToken: (force?: boolean) => mockUserToken(force),
+  signOut: () => mockSignOut(),
+}));
 
 type ClientModule = typeof import('../src/api/client');
 
@@ -208,5 +215,136 @@ describe('api client auth', () => {
     const retried = fetchMock.mock.calls[1][0] as Request;
     expect(retried.headers.get('Authorization')).toBe('Bearer fresh');
     expect(JSON.parse(await retried.text())).toEqual({ name: 'abc' });
+  });
+});
+
+describe('api client auth, signed in', () => {
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    mockEnsure.mockReset().mockResolvedValue('device-tok');
+    mockClear.mockClear();
+    mockUserToken.mockReset();
+    mockSignOut.mockClear();
+    fetchMock = jest.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    mockUserToken.mockReset().mockResolvedValue(null);
+  });
+
+  const authOf = (call: number) =>
+    (fetchMock.mock.calls[call][0] as Request).headers.get('Authorization');
+
+  it('sends the Firebase ID token instead of the device token', async () => {
+    mockUserToken.mockResolvedValue('id-tok');
+    fetchMock.mockResolvedValueOnce(json(200, { kind: 'user', id: 'u1' }));
+    const { api } = loadClient();
+
+    const { data } = await api.GET('/v1/me');
+    expect(data).toEqual({ kind: 'user', id: 'u1' });
+    expect(authOf(0)).toBe('Bearer id-tok');
+    expect(mockEnsure).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the device token when no ID token can be had', async () => {
+    mockUserToken.mockResolvedValue(null);
+    fetchMock.mockResolvedValueOnce(json(200, {}));
+    await loadClient().api.GET('/v1/me');
+    expect(authOf(0)).toBe('Bearer device-tok');
+  });
+
+  it('on 401 invalid_token: refreshes the ID token once and retries', async () => {
+    mockUserToken.mockImplementation(async (force) => (force ? 'id-fresh' : 'id-stale'));
+    fetchMock
+      .mockResolvedValueOnce(unauthorized('invalid_token'))
+      .mockResolvedValueOnce(json(200, { kind: 'user', id: 'u1' }));
+    const { api } = loadClient();
+
+    const { data } = await api.GET('/v1/me');
+    expect(data).toEqual({ kind: 'user', id: 'u1' });
+    expect(authOf(1)).toBe('Bearer id-fresh');
+    expect(mockUserToken).toHaveBeenLastCalledWith(true);
+    // The device token is left alone.
+    expect(mockClear).not.toHaveBeenCalled();
+  });
+
+  it.each(['invalid_token', 'not_linked', 'auth_required'])(
+    'refreshed token still rejected (%s): signs out, retries once as the device',
+    async (secondCode) => {
+      mockUserToken.mockImplementation(async (force) => (force ? 'id-fresh' : 'id-stale'));
+      fetchMock
+        .mockResolvedValueOnce(unauthorized('invalid_token'))
+        .mockResolvedValueOnce(unauthorized(secondCode))
+        .mockResolvedValueOnce(json(200, { kind: 'device', id: 'd1' }));
+      const { data } = await loadClient().api.GET('/v1/me');
+
+      expect(data).toEqual({ kind: 'device', id: 'd1' });
+      expect(mockSignOut).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(authOf(1)).toBe('Bearer id-fresh');
+      expect(authOf(2)).toBe('Bearer device-tok');
+    },
+  );
+
+  it('the device fallback is tried only once', async () => {
+    mockUserToken.mockImplementation(async (force) => (force ? 'id-fresh' : 'id-stale'));
+    fetchMock.mockImplementation(async () => unauthorized('invalid_token'));
+    const { response } = await loadClient().api.GET('/v1/me');
+    expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('not_linked: signs out and retries once as the device (keeps the body)', async () => {
+    mockUserToken.mockResolvedValue('id-tok');
+    fetchMock
+      .mockResolvedValueOnce(unauthorized('not_linked'))
+      .mockResolvedValueOnce(json(200, { kind: 'device', id: 'd1' }));
+    const { data } = await loadClient().api.GET('/v1/me');
+
+    expect(data).toEqual({ kind: 'device', id: 'd1' });
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
+    expect(mockUserToken).not.toHaveBeenCalledWith(true);
+    expect(authOf(1)).toBe('Bearer device-tok');
+  });
+
+  it('not_linked without a device token: signs out, returns the 401', async () => {
+    mockUserToken.mockResolvedValue('id-tok');
+    mockEnsure.mockResolvedValue(null);
+    fetchMock.mockResolvedValueOnce(unauthorized('not_linked'));
+    const { response } = await loadClient().api.GET('/v1/me');
+    expect(response.status).toBe(401);
+    expect(mockSignOut).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('no fresh ID token (e.g. offline refresh): keeps the session, returns the 401', async () => {
+    mockUserToken.mockImplementation(async (force) => (force ? null : 'id-stale'));
+    fetchMock.mockResolvedValueOnce(unauthorized('invalid_token'));
+    const { response } = await loadClient().api.GET('/v1/me');
+    expect(response.status).toBe(401);
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('503 auth_unavailable: no fallback to the device token', async () => {
+    mockUserToken.mockResolvedValue('id-tok');
+    fetchMock.mockResolvedValueOnce(
+      json(503, { error: { code: 'auth_unavailable', message_he: 'x', details: {} } }),
+    );
+    const { response, error } = await loadClient().api.GET('/v1/me');
+    expect(response.status).toBe(503);
+    expect(error).toEqual({ error: { code: 'auth_unavailable', message_he: 'x', details: {} } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mockSignOut).not.toHaveBeenCalled();
+  });
+
+  it('/v1/auth/link is left to session.ts (no token added)', async () => {
+    mockUserToken.mockResolvedValue('id-tok');
+    fetchMock.mockResolvedValueOnce(json(201, { user_id: 'u1' }));
+    await loadClient().api.POST('/v1/auth/link', { body: {} });
+    expect(authOf(0)).toBeNull();
+    expect(mockUserToken).not.toHaveBeenCalled();
   });
 });
