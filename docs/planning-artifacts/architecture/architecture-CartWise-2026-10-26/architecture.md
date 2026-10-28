@@ -2,7 +2,7 @@
 title: "CartWise: Solution Architecture"
 status: final
 created: 2026-10-26
-updated: 2026-10-26
+updated: 2026-10-28
 spine: ARCHITECTURE-SPINE.md
 sources:
   - ../../prds/prd-CartWise-2026-10-26/prd.md
@@ -20,84 +20,89 @@ sources:
 
 ## 1. סקירה
 
+> **עדכון 2026-10-28:** הארכיטקטורה פושטה לשרת חינמי אחד. ה-OCR רץ אצלנו, זמני הנסיעה מגיעים משירות חינמי, וה-MVP הוא Android בלבד.
+
 ```mermaid
 graph RL
-  user((משפחה / משתמש)) --> app[אפליקציית CartWise<br/>Expo / React Native]
-  app -->|HTTPS /v1| api[CartWise API<br/>FastAPI · Cloud Run · me-west1]
-  app -->|Sign-in| fb[Firebase Auth<br/>Google / Apple]
-  app -->|App Check| ac[App Attest / Play Integrity]
-  api --> db[(Cloud SQL<br/>PostgreSQL + PostGIS)]
-  api -->|receipt image inline| llm[Claude API<br/>vision extraction]
-  api -->|route matrix| routes[Google Routes API]
-  sched[Cloud Scheduler] --> jobs[Ingestion Job<br/>Cloud Run Jobs · me-west1]
-  jobs -->|download XML| chains[אתרי שקיפות המחירים<br/>של הרשתות]
-  jobs --> db
-  tasks[Cloud Tasks] --> wk[Matching / Trust worker]
-  api --> tasks
-  wk --> db
-  app --> maps[Maps SDK<br/>להצגת מפה בלבד]
+  user((משפחה / משתמש)) --> app[אפליקציית CartWise<br/>Expo / React Native · Android]
+  app -->|HTTPS /v1| caddy[Caddy · HTTPS]
+  app -->|Sign-in| fb[Firebase Auth<br/>Google]
+  subgraph VM[שרת אחד · Oracle Cloud Always Free · ירושלים]
+    caddy --> api[API · FastAPI]
+    api --> db[(PostgreSQL + PostGIS)]
+    worker[Worker · אותו קוד<br/>תזמון + משימות רקע + OCR] --> db
+  end
+  worker -->|download XML| chains[אתרי שקיפות המחירים<br/>של הרשתות]
+  api -->|matrix: walk/car| ors[openrouteservice<br/>חינמי]
+  worker -->|גיבוי לילי| os[Oracle Object Storage<br/>חינמי]
+  app --> maps[מפה באפליקציה<br/>להצגה בלבד]
 ```
 
 **שלושה זרמים עיקריים:**
-1. **קליטה:** קובצי המחירים של הרשתות נקלטים כל כמה שעות לבסיס הנתונים.
-2. **השוואה:** סינכרונית. האפליקציה שולחת בקשה, והשרת מחשב ומחזיר תשובה תוך 3 שניות.
-3. **סריקה:** סינכרונית עד מסך האישור, תוך 15 שניות. ההתאמה הסופית ועדכון האמינות רצים אחר כך, באופן אסינכרוני.
+1. **קליטה:** ה-worker מוריד את קובצי המחירים של הרשתות כל 6 שעות. ההורדה יוצאת משרת בישראל.
+2. **השוואה:** סינכרונית. התשובה חוזרת תוך 3 שניות.
+3. **סריקה:** ה-OCR רץ על השרת שלנו, והתמונה לא יוצאת מהשרת. ההתאמה הסופית ועדכון האמינות רצים ב-worker.
 
 ## 2. סטאק טכנולוגי ונימוקים
 
+**עיקרון מנחה:** הכול חינמי, ושירותים מעטים ככל האפשר. מרחיבים רק כשמספר המשתמשים מחייב.
+
 | שכבה | בחירה | למה | חלופה שנשקלה | סטטוס |
 |---|---|---|---|---|
-| אפליקציה | **React Native + Expo SDK 56** (RN 0.85, React 19.2), TypeScript ([expo.dev](https://expo.dev/sdk/56)) | iOS ו-Android מקוד אחד, ספריות בשלות למצלמה, מפות, סריקת ברקוד ו-RTL, ופתח לאתר בעתיד. בניית האפליקציות ב-EAS. | Flutter | נבחר |
-| מצלמה ו-OCR במכשיר | `expo-camera` לצילום ולסריקת ברקוד, ומודול native ל-OCR של ספרות (ML Kit Text Recognition או Apple Vision) דרך Expo dev client | נדרש לזיהוי תבניות ספרות לטשטוש (AD-8). ML Kit לא מזהה כתב עברי, אבל ספרות כן `[לאמת]` | שליחת התמונה בלי טשטוש, נדחה בגלל פרטיות | נבחר |
-| מפות באפליקציה | `react-native-maps` | הצגת סיכות בלבד. לא משמש לחישוב זמני נסיעה | Mapbox | `[הנחה]` |
-| Backend | **Python 3.13+, FastAPI** (≥0.118.3, שתומך גם ב-Python 3.14), Pydantic v2, SQLAlchemy 2 ו-Alembic | הצוות מכיר Python. ספריית קליטת הקבצים (`il-supermarket-scraper`) כתובה ב-Python. FastAPI מייצר OpenAPI אוטומטית (AD-13). | Java + Spring | נבחר. הגרסאות ננעלות בזמן הבנייה |
-| הרצה | **Cloud Run** (API) ו-**Cloud Run Jobs** (קליטה) ב-**me-west1** | Serverless, משלמים לפי שימוש, ושרת בישראל, כי חלק מאתרי הרשתות חוסמים גישה מחו"ל. | GKE, VM | `[לאמת]`: זמינות ב-me-west1 |
-| בסיס נתונים | **Cloud SQL for PostgreSQL**, עם PostGIS, pg_trgm ו-unaccent | שאילתות מיקום (ST_DWithin), חיפוש fuzzy בעברית, וטרנזקציות למכסה. | Firestore, נדחה כי אין בו שאילתות מיקום ו-SQL | `[לאמת]`: הרחבות זמינות |
-| תורים | **Cloud Tasks** ו-**Cloud Scheduler** | משימות רקע להתאמה ולאמינות, וקליטה מתוזמנת | Pub/Sub | נבחר |
-| הזדהות | **Firebase Auth** (Google ו-Apple), ו-**Firebase App Check** | הרשמה רק כשצריך (FR-2), ואימות שהבקשה מגיעה מהאפליקציה האמיתית (גם לאורחים) | Auth0, Supabase Auth | נבחר |
-| חילוץ חשבוניות | **Claude API** (vision), עם תמונה inline ופלט JSON לפי סכמה | עובד טוב עם עברית ועם קיצורים, ומחזיר שדות מובנים. דגם: Claude Sonnet 5.5, עם בדיקה של Haiku 5.5 להוזלה `[הנחה: הבחירה הסופית לפי מדגם]` | Google Document AI ו-parser | נבחר |
-| OCR בשרת לטשטוש | **Tesseract 5** (heb ו-eng), בתוך התהליך | שלב טשטוש שני בלי ספק חיצוני (AD-8) | Cloud Vision | נבחר |
-| זמני נסיעה | **Google Routes API**, `computeRouteMatrix` (WALK, DRIVE, TRANSIT) ([Google](https://developers.google.com/maps/documentation/routes/transit-rm)) | אמין, ותומך בתחבורה ציבורית. התשלום לפי זוג מוצא-יעד, ועד 100 זוגות בבקשה בתחבורה ציבורית. | OSRM + OpenTripPlanner | נבחר. `[לאמת]`: איכות הנתונים והעלות בישראל |
-| קליטת קבצים | [`il-supermarket-scraper`](https://pypi.org/project/il-supermarket-scraper/1.0.6/) כבסיס, עם adapter נפרד לכל רשת | ספרייה שמתוחזקת ונבדקת כל יום, ומכסה את הרשתות שברשימה הממשלתית | כתיבה מאפס | `[לאמת ב-S3.1]`: רישיון ויציבות |
-| CI/CD | GitHub Actions, Cloud Build, ו-EAS Build/Submit | | | `[הנחה]` |
-| ניטור | Cloud Logging, Cloud Monitoring ו-Error Reporting. Sentry לאפליקציה | | | `[הנחה]` |
+| אפליקציה | **React Native + Expo SDK 56** (RN 0.85), TypeScript ([expo.dev](https://expo.dev/sdk/56)). **MVP: Android בלבד** | קוד אחד, שיתאים גם ל-iOS בגרסה 1.1. ב-Android ההפצה חינמית (APK) או בתשלום חד-פעמי נמוך (Google Play) | Kotlin | נבחר |
+| מצלמה וטשטוש במכשיר | `expo-camera` לצילום ולברקוד, ו-ML Kit Text Recognition לזיהוי ספרות, דרך Expo dev client | טשטוש של תבניות ספרות לפני השליחה (AD-8). ML Kit לא מזהה עברית, אבל ספרות כן `[לאמת]` | — | נבחר |
+| מפה באפליקציה | `react-native-maps` | הצגת סיכות בלבד `[לאמת: שימוש חינמי ב-Android]` | MapLibre עם אריחי OSM | `[הנחה]` |
+| שרת | **Oracle Cloud Always Free**: מכונה עם 4 ליבות ARM ו-24GB זיכרון, באזור **ירושלים** (il-jerusalem-1) ([Oracle](https://docs.oracle.com/iaas/releasenotes/changes/42075bb1-29a3-4ae2-96a1-588001665b3e)) | חינם לתמיד. השרת בישראל, ולכן הבעיה של אתרי רשתות שחוסמים גישה מחו"ל נפתרת. שרת אחד במקום 7–8 שירותים | Cloud Run + Neon | `[לאמת]`: שיש מקום פנוי בירושלים. ראו §13 לחלופה |
+| הרצה | **Docker Compose** עם 4 קונטיינרים: `caddy`, `api`, `worker` ו-`db` | פשוט להקים ולתחזק. Caddy מנפיק תעודת HTTPS בחינם (Let's Encrypt) | Kubernetes | נבחר |
+| Backend | **Python 3.13+, FastAPI**, Pydantic v2, SQLAlchemy 2 ו-Alembic | הצוות מכיר Python, וספריית הקליטה כתובה ב-Python | Java + Spring | נבחר |
+| בסיס נתונים | **PostgreSQL 16 עם PostGIS, pg_trgm ו-unaccent**, בקונטיינר על אותו שרת | שאילתות מיקום, חיפוש fuzzy בעברית וטרנזקציות. בשרת יש עד 200GB דיסק חינמי, כך שאין מגבלת נפח של שירות מנוהל | Neon (חינמי, 1GB) | נבחר |
+| משימות רקע ותזמון | **APScheduler** ב-worker, ותור משימות כטבלה ב-Postgres (`jobs`, עם `FOR UPDATE SKIP LOCKED`) | בלי שירות תורים נפרד | Cloud Tasks, Celery + Redis | נבחר |
+| הזדהות | **Firebase Auth** (Google), בתוכנית החינמית. **App Check עם Play Integrity** | הרשמה רק כשצריך (FR-2). Apple יתווסף עם iOS | Auth0 | נבחר `[לאמת: מכסת Play Integrity החינמית]` |
+| חילוץ חשבוניות | **Tesseract 5** (heb ו-eng), עם עיבוד תמונה מקדים ב-OpenCV ו-parser מבוסס כללים, על השרת שלנו | חינמי, ופרטי לגמרי, כי התמונה לא יוצאת מהשרת | Claude API או Gemini (בתשלום, או חינמי בלי פרטיות) | נבחר. ⚠️ הדיוק בסיכון (SM-2) |
+| זמני נסיעה | **openrouteservice** Matrix API, בתוכנית החינמית: 500 בקשות ביום, הליכה ורכב ([ORS](https://openrouteservice.org/plans/)) | חינמי. תחבורה ציבורית נדחתה לגרסה 1.1 | Google Routes | נבחר |
+| Geocoding לסניפים | **Nominatim** (OpenStreetMap). כשאין תוצאה, המיקום נקבע ידנית | חינמי. נדרש רק לסניפים בלי קואורדינטות `[לאמת: תנאי השימוש]` | Google Geocoding | `[הנחה]` |
+| קליטת קבצים | [`il-supermarket-scraper`](https://pypi.org/project/il-supermarket-scraper/1.0.6/) כבסיס, עם adapter נפרד לכל רשת | מתוחזקת, וכתובה ב-Python | כתיבה מאפס | `[לאמת ב-S3.1]` |
+| גיבויים | `pg_dump` לילי ל-**Oracle Object Storage**, שכלול ב-Always Free | חינמי | — | `[לאמת: המכסה החינמית]` |
+| CI/CD | **GitHub Actions** (חינמי לריפו ציבורי, או במכסה החינמית). הפריסה ב-SSH ו-`docker compose pull`. האפליקציה נבנית מקומית או ב-EAS החינמי | — | — | `[הנחה]` |
+| ניטור | **Sentry** בתוכנית החינמית (שגיאות באפליקציה ובשרת), ו-**UptimeRobot** החינמי (זמינות) | — | Grafana Cloud | `[הנחה]` |
+| דומיין | תת-דומיין חינמי, למשל DuckDNS, או דומיין בתשלום שנתי נמוך | Caddy צריך שם דומיין כדי להנפיק HTTPS | — | `[הנחה]` |
 
-## 3. רכיבים
+**עלויות שנשארות:** רק אופציונליות. דומיין משלכם, ו-Google Play (תשלום חד-פעמי) אם מפרסמים בחנות ולא כ-APK. חשבון המפתח של Apple נדרש רק בגרסה 1.1.
+
+## 3. רכיבים ומבנה הקוד
+
+**מבנה פשוט, עם הפרדה לפי מודולים** (AD-2). בכל מודול יש ארבעה קבצים:
+
+```
+backend/
+  app/
+    main.py                  # FastAPI app, routers registration
+    core/                    # config, db session, auth (Subject), errors, money, ids
+    modules/
+      <module>/              # identity, lists, catalog, pricing, ingestion, receipts, matching, trust, quota, spending, geo
+        models.py            # SQLAlchemy tables owned by this module
+        schemas.py           # Pydantic request/response
+        repository.py        # DB queries for this module only
+        service.py           # business logic (pure functions where possible)
+        routes.py            # FastAPI router (if the module has endpoints)
+    worker/
+      main.py                # APScheduler + jobs-table consumer
+      jobs/                  # ingest_chain, refresh_prices, finalize_matches, recompute_trust, purge_deleted
+  migrations/                # Alembic
+  tests/
+mobile/                      # Expo app (TypeScript)
+deploy/
+  docker-compose.yml, Caddyfile, backup.sh
+```
 
 ```mermaid
 graph TD
-  subgraph Mobile[Expo app]
-    ui[Screens: EXPERIENCE.md] --> client[Generated TS API client]
-    ui --> blur[On-device blur: digit OCR]
-    ui --> local[Local store: lists offline, guest prefs, first name]
-  end
-  subgraph API[FastAPI service · Cloud Run]
-    identity
-    lists
-    catalog
-    pricing
-    receipts
-    matching
-    trust
-    quota
-    spending
-    geo
-  end
-  subgraph Workers
-    ingestion[ingestion job]
-    mtask[matching/trust task handler]
-  end
-  client --> API
-  receipts --> matching
-  receipts --> pricing
-  ingestion --> matching
-  ingestion --> pricing
-  pricing --> trust
-  pricing --> geo
-  pricing --> quota
-  matching --> catalog
-  mtask --> matching
-  mtask --> trust
+  routes[routes.py] --> service[service.py]
+  workerjobs[worker/jobs] --> service
+  service --> repo[repository.py]
+  repo --> models[models.py]
+  service --> core[core]
+  service -. "מודול אחר רק דרך service.py שלו" .-> other[other module service.py]
 ```
 
 | מודול | תפקיד | FR |
@@ -107,12 +112,12 @@ graph TD
 | catalog | רשתות, מועדונים, סניפים, מוצרים, מותגים, קטגוריות, חיפוש | FR-9, FR-10, FR-14, FR-41 |
 | ingestion | הורדה ועיבוד של קבצים רשמיים, וניטור | FR-13..FR-16 |
 | pricing | תצפיות, מבצעים, מחיר אפקטיבי, השוואת סל, דיווח מלאי | FR-15, FR-18..FR-25 |
-| receipts | צינור הסריקה, חשבונית כפולה או ישנה, מגבלות | FR-26..FR-36 |
+| receipts | OCR, parser, חשבונית כפולה או ישנה, מגבלות | FR-26..FR-36 |
 | matching | התאמת כינויים, הצבעות, התאמה סופית | FR-17, FR-37..FR-41 |
 | trust | עדיפות, חריגים, אמינות, ציון משתמש, חסימה | FR-42..FR-46 |
 | quota | ספר המכסה | FR-25, FR-47..FR-49 |
 | spending | סיכומי הוצאות | FR-50, FR-51 |
-| geo | זמני נסיעה ומטמון | FR-18, NFR-26 |
+| geo | זמני נסיעה (ORS) ומטמון | FR-18, NFR-26 |
 
 ## 4. מודל נתונים
 
@@ -151,7 +156,7 @@ erDiagram
 
 | טבלה | שדות עיקריים | הערות |
 |---|---|---|
-| `users` | id, firebase_uid (unique), email, created_at, deleted_at | בלי שם, טלפון או כתובת (FR-2) |
+| `users` | id, firebase_uid (unique), created_at, deleted_at | בלי שם, מייל, טלפון או כתובת (FR-2) |
 | `devices` | id, user_id (nullable), install_id_hash, attestation_ok_at | זהות לאורח (FR-1) |
 | `user_clubs` / `user_brands` | subject_id, club_id / brand_id | subject הוא user או device |
 | `user_prefs` | subject_id, default_mode, default_minutes, min_coverage_pct | FR-5, FR-20 |
@@ -173,7 +178,7 @@ erDiagram
 | `match_votes` | alias_id, user_id, product_id, vote (confirm, other, unknown), created_at | FR-39 |
 | `user_trust` | user_id, accepted_count, anomalous_count, score, blocked | FR-45, FR-46 |
 | `quota_ledger` | id, subject_id, kind (grant_monthly, grant_scan, reserve, commit, release), amount, period (YYYY-MM), ref_id, created_at | AD-11 |
-| `travel_time_cache` | origin_geohash7, store_id, mode, time_bucket, seconds, fetched_at | TTL של 7 ימים לרכב והליכה, ושל יום אחד לתחבורה ציבורית `[הנחה]` |
+| `travel_time_cache` | origin_geohash7, store_id, mode (walk, car), seconds, fetched_at | TTL של 7 ימים `[הנחה]` |
 | `ingestion_runs` / `ingestion_files` | chain_id, started_at, status, file_name, file_hash, records, errors | FR-13, FR-16, AD-14 |
 
 ### 4.2 "המחיר הנוכחי"
@@ -220,83 +225,95 @@ erDiagram
 
 ```mermaid
 graph RL
-  s[Cloud Scheduler<br/>כל 6 שעות לכל רשת] --> j[Ingestion Job · me-west1]
-  j --> f1[Fetch: adapter לכל רשת<br/>il-supermarket-scraper]
+  s[APScheduler ב-worker<br/>כל 6 שעות לכל רשת] --> f1[Fetch: adapter לכל רשת<br/>il-supermarket-scraper]
   f1 --> f2[Dedup: file_hash<br/>AD-14]
   f2 --> f3[Parse XML → רשומות<br/>stores / prices / promos]
   f3 --> f4[Normalize: יחידות, אגורות,<br/>normalize_he]
   f4 --> f5[Match: barcode → product,<br/>אחרת matching.service]
-  f5 --> f6[Write: price_observations<br/>source=official_file]
+  f5 --> f6[Write: price_observations<br/>רק מחירים שהשתנו]
   f6 --> f7[Refresh current_prices]
   f7 --> f8[Health metrics → התראות FR-16]
 ```
 
 **כללים:**
-- **Adapter לכל רשת:** כל adapter מממש את `ChainFeedPort.list_files()` ואת `fetch(file)`. שינוי בפורמט של רשת אחת לא שובר את האחרות.
-- **סניפים:** קובץ סניפים יוצר או מעדכן `stores`. כשחסרות קואורדינטות, המערכת משתמשת ב-geocoding של Google לפי הכתובת. סניף שה-geocoding נכשל עבורו מקבל `status=needs_location` ולא נכנס להשוואות (FR-14).
+- **Adapter לכל רשת:** כל adapter מממש את `list_files()` ואת `fetch(file)`. שינוי בפורמט של רשת אחת לא שובר את האחרות.
+- **שרת בישראל:** הקליטה רצה מהשרת בירושלים, ולכן לא נחסמת באתרים שחוסמים גישה מחו"ל.
+- **רק מחירים שהשתנו:** תצפית חדשה נכתבת רק כשהמחיר שונה מהתצפית התקפה האחרונה של אותו מוצר באותו סניף. כך הנפח נשאר קטן.
+- **סניפים:** קובץ סניפים יוצר או מעדכן `stores`. כשחסרות קואורדינטות, המערכת מנסה Nominatim לפי הכתובת. אם גם זה נכשל, הסניף מקבל `status=needs_location`, לא נכנס להשוואות, ומחכה להזנה ידנית של מפעיל (FR-14).
 - **מבצעים:**
   - נשמרים עם תוקף, תנאי כמות וסוג.
   - מבצע שלא מתועד בבירור כפתוח לכולם נשמר עם `club_id` של מועדון הרשת (FR-15).
   - ⚠️ זה תלוי באימות A3 ב-S3.1.
-- **התראות (FR-16):** בשלושה מקרים:
+- **התראות (FR-16):** בשלושה מקרים, דרך Sentry או מייל:
   - רשת שלא נקלטה במשך יותר מ-24 שעות
   - ירידה של יותר מ-30% במספר הרשומות
   - יותר מ-5% שגיאות parsing
 - **מוצרים בלי ברקוד** בקובץ (למשל ירקות במשקל): עוברים דרך matching, באותו מסלול כמו כינוי מחשבונית.
 
-## 7. צינור עיבוד חשבוניות
+## 7. צינור עיבוד חשבוניות (OCR מקומי)
 
 ```mermaid
 sequenceDiagram
   participant App as אפליקציה
   participant API as API (receipts)
-  participant T as Tesseract (in-process)
-  participant L as Claude API
+  participant O as OCR מקומי<br/>(OpenCV + Tesseract)
+  participant R as parser מבוסס כללים
   participant M as matching
   participant P as pricing/trust
   App->>App: צילום / גלריה, הסרת EXIF
-  App->>App: OCR ספרות → טשטוש שורות PII
+  App->>App: OCR ספרות (ML Kit) → טשטוש שורות PII
   App->>App: תצוגה מקדימה + טשטוש ידני + אישור
   App->>API: POST /receipts (1–3 תמונות, בזיכרון)
-  API->>T: איתור PII נוסף → טשטוש
-  API->>L: תמונה inline + סכמת JSON
-  L-->>API: {store, datetime, lines[], total, discounts}
-  API->>API: scrub_pii, ולידציה, fingerprint
+  API->>O: עיבוד מקדים: יישור, ניגודיות, בינאריזציה
+  O-->>API: שורות טקסט + ביטחון לכל שורה
   API->>API: שחרור התמונות מהזיכרון (AD-7)
+  API->>API: scrub_pii על הטקסט
+  API->>R: חנות, תאריך, שורות, הנחות, סכום
+  R-->>API: draft מובנה
   API->>M: match(alias) לכל שורה
   API-->>App: draft + עד 3 שאלות לא ודאיות
   App->>API: POST /receipts/{id}/confirm (תשובות, תיקונים)
   API->>P: יצירת תצפיות, עדיפות וחריגים (FR-42, FR-43)
   API->>API: quota grant_scan (אם זכאית)
   API-->>App: הצלחה + quota + סכום החודש
-  API->>M: Cloud Task: עדכון הצבעות → final
+  API->>API: משימה בטבלת jobs: עדכון הצבעות → final
 ```
 
 **שלבים וכללים:**
 
-1. **ולידציה של התוצאה מה-LLM:**
-   - חנות ותאריך: חובה.
-   - סכום השורות צריך להתאים לסכום הכולל, עם סטייה של עד ±2%.
-   - אם פחות מ-50% מהשורות קריאות, החשבונית מסווגת כ-`unreadable` (FR-33).
-   - שורות עם סכום שלילי מסומנות `is_return` (EC-5).
-   - הנחה שמופיעה מתחת לשורה משויכת לשורה שמעליה.
-   - קופון או הנחה כללית על כל החשבונית מסומנים `has_personal_discount` (EC-9).
-   - **סיווג הנחות (FR-29, EC-21):** הסכמה שה-LLM ממלא כוללת לכל הנחה את השדה `discount_kind`, עם אחד מהערכים `club`, `multi_buy`, `percent`, `personal` או `unknown`. אחר כך `receipts.domain.classify_discount()` מאמת את הסיווג בכללים: מילון של מילים כמו "מועדון" ושמות המועדונים, ו-regex לתבניות כמו "N ב-X".
-     - `club`: נוצרות שתי תצפיות, `regular` ו-`club` (עם club_id של הרשת).
-     - `multi_buy` או `percent`: נוצרות תצפית `regular` ושורה ב-`promotions` (source=receipt, ends_at = purchased_at + 7d).
-     - `unknown`: נוצרת רק תצפית `regular`.
-2. **בדיקות חשבונית:**
+1. **OCR מקומי** (`receipts/ocr.py`):
+   - **עיבוד מקדים ב-OpenCV:** יישור (deskew), תיקון פרספקטיבה, הגברת ניגודיות, ובינאריזציה אדפטיבית. השלבים האלה חשובים במיוחד לחשבוניות תרמיות דהויות.
+   - **זיהוי:** Tesseract 5 עם `heb+eng`. מצב ה-segmentation מתאים לעמודה אחת של טקסט.
+   - **פלט:** שורות טקסט, וציון ביטחון לכל שורה.
+   - **זמן ריצה:** כמה שניות לחשבונית, על 4 ליבות ARM. `[הנחה: ייבדק על מדגם]`
+   - **פרטיות:** התמונה לא יוצאת מהשרת, ולא נכתבת לדיסק (AD-7).
+2. **Parser מבוסס כללים** (`receipts/parser.py`):
+   - **כותרת:** שם הרשת, הכתובת או קוד הסניף, והתאריך והשעה, לפי regex.
+   - **שורות מוצר:** לפי התבנית "שם, כמות או משקל, מחיר". שורת משקל מזוהה לפי "ק"ג" (EC-2).
+   - **תבניות לכל רשת:** לרשתות המוכרות יש תבנית פריסה משלהן, ולשאר יש תבנית כללית. התבניות מתווספות ככל שמצטברות חשבוניות.
+   - **מילון קיצורים:** משותף עם `normalize_he` (§8).
+3. **ולידציה:**
+   - **חובה:** חנות ותאריך.
+   - **סכום:** סכום השורות צריך להתאים לסכום הכולל, עם סטייה של עד ±2%. אם הסכום לא מתאים, השורות הלא ודאיות מוצגות לתיקון במסך האישור.
+   - **קריאות:** אם פחות מ-50% מהשורות נקראו בביטחון סביר, החשבונית מסווגת `unreadable` (FR-33).
+   - **החזרות:** שורות עם סכום שלילי מסומנות `is_return` (EC-5).
+   - **הנחות:** הנחה שמופיעה מתחת לשורה משויכת לשורה שמעליה. קופון או הנחה כללית על כל החשבונית מסומנים `has_personal_discount` (EC-9).
+4. **סיווג הנחות (FR-29, EC-21):** `receipts.service.classify_discount()` מבוסס על מילון מילים (כמו "מועדון", "חבר" ושמות המועדונים), ועל regex לתבניות כמו "N ב-X" ו-"השני ב-Y%". הסיווגים: `club`, `multi_buy`, `percent`, `personal` או `unknown`.
+   - **`club`:** נוצרות שתי תצפיות, `regular` ו-`club` (עם club_id של הרשת).
+   - **`multi_buy` או `percent`:** נוצרות תצפית `regular` ושורה ב-`promotions` (source=receipt, ends_at = purchased_at + 7d).
+   - **`unknown`:** נוצרת רק תצפית `regular`.
+5. **בדיקות חשבונית:**
    - **כפולה:** לפי fingerprint (FR-34).
    - **תאריך:** חשבונית מלפני יותר מ-30 יום מקבלת `spend_only`. חשבונית עם תאריך עתידי נדחית (FR-35).
-   - **מגבלה יומית:** אחרי 5 זיכויים ביום, החשבונית מסומנת `credited=false` (FR-36).
-3. **מוצר שקיל:** אם יש שורת משקל (למשל "1.240 ק"ג"), נשמר מחיר לק"ג (EC-2).
-4. **זיהוי סניף:**
+   - **מגבלה יומית:** אחרי 5 זיכויים ביום, `credited=false` (FR-36).
+6. **זיהוי סניף:**
    - קודם לפי קוד הסניף או הכתובת שבחשבונית.
-   - אחר כך לפי שם הרשת וסניפים בטווח של 2 ק"מ מנקודה שהמשתמש בחר. מיקום אוטומטי לא נשלח.
-   - אם לא נמצא סניף, החשבונית מקבלת `pending_branch` (FR-31).
-5. **טיוטה בין השלבים:** בין `POST /receipts` ל-`/confirm` הטיוטה נשמרת כ-`receipts.status=draft`, בלי תמונה. טיוטה שלא אושרה תוך 24 שעות נמחקת.
-6. **ה-prompt למודל:** כולל הנחיה מפורשת לא להחזיר פרטים מזהים, ופלט JSON לפי סכמה. אחרי החילוץ, `scrub_pii` רץ בכל מקרה.
-7. **שמירת נתונים אצל הספק (Q1, הוחלט B):** הספק מקבל רק תמונה שטושטשה פעמיים, ועשוי לשמור אותה זמנית לפי המדיניות שלו. במקביל מגישים בקשה ל-Zero Data Retention ב-Anthropic, ומדיניות הפרטיות מציינת את השמירה הזמנית. ZDR ניתן לכל ארגון בנפרד, ובאישור. גם עם ZDR, Files API נשמר, ולכן לא משתמשים בו ([Anthropic](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention)). ראו שאלה פתוחה Q1 בסעיף 16.
+   - אחר כך לפי שם הרשת וסניפים בטווח של 2 ק"מ מנקודה שהמשתמש בחר.
+   - אם לא נמצא סניף, `pending_branch` (FR-31).
+7. **טיוטה:** בין `POST /receipts` ל-`/confirm` נשמרת `receipts.status=draft`, בלי תמונה. טיוטה שלא אושרה תוך 24 שעות נמחקת.
+8. **שיפור הדיוק בהמשך:**
+   - כל תיקון של משתמש במסך האישור נשמר, בצורה אנונימית, כדוגמה לשיפור הכללים והתבניות.
+   - אם הדיוק לא יספיק (SM-2), שתי חלופות לשקול: מודל ראייה בקוד פתוח על השרת שלנו (חינמי, אבל איטי על CPU), או שירות חיצוני בתשלום.
 
 ## 8. מנגנון התאמת מוצרים
 
@@ -315,11 +332,12 @@ sequenceDiagram
 
    `price_sanity` הוא 1 כשהמחיר נמצא בטווח ±50% מהחציון של המוצר, ו-0 אחרת. `[הנחה: המשקלים יכוילו על מדגם מתויג]`
 3. **סף ודאות:** `certain` כשהציון ≥ θ, וגם הפער מהמועמד השני ≥ 0.1. θ מכויל כך ש-precision ≥ 90% (SM-1).
+   - **נתוני כיול בחינם:** מוצרים בקבצים הרשמיים שיש להם גם שם וגם ברקוד הם "תשובות נכונות" מוכנות. מריצים את ההתאמה על השם בלבד, ובודקים מול הברקוד. כך מקבלים מדגם של מאות ואלפי כינויים מתויגים, בלי תיוג ידני.
 4. **מתחת לסף:** `uncertain`. הכינוי מוצג למשתמש, ונשמר עם 3 המועמדים הראשונים.
 5. **אין מועמד מעל 0.3:** נוצרת הצעה למוצר חדש, `products.status=proposed`.
 
 **הצבעות (FR-39):**
-- התאמה הופכת ל-`final` כשיש ≥3 הצבעות confirm ממשתמשים שונים, שה-trust score של כל אחד מהם ≥ הסף.
+- התאמה הופכת ל-`final` כשיש ≥3 הצבעות confirm ממשתמשים שונים, שה-trust score של כל אחד מהם ≥ הסף, **או** כשמפעיל אישר אותה ב-`/admin/matches` (נרשמת הצבעה עם `role=operator`).
 - אם רוב ההצבעות הן לטובת מוצר אחר, הכינוי עובר ל-`disputed` ואז מתעדכן למוצר הזה.
 - **זיכרון התאמות (FR-40):** הכינוי הוא ברמת הרשת, `(chain_id, alias_norm)`. בפעם הבאה שאותו כינוי מופיע באותה רשת, הוא מותאם אוטומטית.
 
@@ -337,16 +355,18 @@ sequenceDiagram
 ```text
 1. reserve quota (AD-5, AD-11)  — unless same list compared today (FR-25)
 2. CANDIDATE STORES (geo):
-     r_max = max_minutes × v_max(mode)       # walk 6 km/h, drive 60 km/h, transit 40 km/h  [הנחה]
+     r_max = max_minutes × v_max(mode)       # walk 6 km/h, drive 60 km/h  [הנחה]  (transit: v1.1)
      S0 = stores WHERE ST_DWithin(location, origin, r_max) AND status=active
 3. TRAVEL TIMES (AD-10):
-     for s in S0: t[s] = cache.get(geohash7(origin), s, mode, bucket(now))
-     missing → Routes computeRouteMatrix in chunks of ≤100 elements → cache.put
+     for s in S0: t[s] = cache.get(geohash7(origin), s, mode)
+     missing → ORS /v2/matrix/{foot-walking|driving-car}, one request (origin × missing stores) → cache.put
+     if ORS daily counter ≥ 450 → t[s] = air_distance / v_avg(mode), flag result 'estimated_times' (AD-10)
      S = { s ∈ S0 : t[s] ≤ max_minutes }
      if S = ∅ → release quota, return NO_STORES (FR-23)
 4. RESOLVE ITEMS per store s, item i:
      cand = products satisfying brand_constraint(i)           # specific / preferred brands / any (FR-11)
-            with matching pack size (unit-price compare for preferred/any) (FR-19)
+            with pack size in [0.5×, 2×] of requested size (preferred/any only; specific = exact product) (FR-11, FR-19)
+     cost basis = unit_price(per l/kg) × requested_size × qty ; if size ≠ requested → substitution note (EC-22)
      for p in cand: q[p] = pricing.effective_price(i, current_prices[s,p], promos[s,p], user_clubs, qty_i)   (AD-6)
      pick p* = argmin q   (excluding status≠valid, AD-3)
      if none: known[s,i] = False
@@ -374,7 +394,7 @@ sequenceDiagram
 **סיבוכיות וביצועים:**
 - **היקף:** עד 30 סניפים ו-50 פריטים, ועד 20 מועמדים לפריט. זה עד 30,000 הערכות בזיכרון.
 - **שליפת נתונים:** בשאילתה אחת מ-`current_prices` לכל הסניפים והמוצרים.
-- **זמני נסיעה:** כשיש פגיעה במטמון, התשובה היא מיידית. כשאין, קריאה אחת או שתיים ל-Routes, כלומר 300–800 מילישניות. `[הנחה]`
+- **זמני נסיעה:** כשיש פגיעה במטמון, התשובה היא מיידית. כשאין, קריאה אחת ל-ORS, כלומר 300–800 מילישניות. `[הנחה]`
 - **סיכום:** היעד של 3 שניות ב-p95 (NFR-2) ריאלי.
 
 ## 10. אמינות נתונים ומניעת הזנה זדונית
@@ -397,65 +417,76 @@ stateDiagram-v2
 
 | שכבה | מנגנון | FR |
 |---|---|---|
-| זהות האפליקציה | Firebase App Check (App Attest ו-Play Integrity) על כל בקשה, גם מאורח | NFR-10 |
+| זהות האפליקציה | Firebase App Check (Play Integrity, ב-Android) על כל בקשה, גם מאורח. App Attest יתווסף עם iOS | NFR-10 |
 | קצב | הגבלת קצב לכל subject, ומגבלת זיכוי של 5 ביום | FR-36, NFR-10 |
 | כפילות | fingerprint ייחודי לחשבונית | FR-34 |
 | תוכן | סכום השורות מול הסכום הכולל, תאריך, וחריגה של יותר מ-40% מהחציון | FR-35, FR-43 |
-| עדיפות | שלושת התנאים של D4 | FR-42 |
+| עדיפות | ארבעת התנאים של FR-42, כולל: תורם חדש (פחות מ-10 תרומות שאושרו) לא דורס קובץ רשמי בלי אישור עצמאי | FR-42 |
 | תורם | `user_trust.score = accepted / (accepted + anomalous)`. אחרי 10 תצפיות לפחות, ציון מתחת ל-0.5 מבטל לתורם את העדיפות על קובץ רשמי ואת המשקל בהצבעות | FR-45 |
 | השפעה מוגבלת | תצפית אחת לא יכולה להפוך מחיר מקובץ רשמי ללא תקף. היא רק נוספת כתצפית מקבילה | AD-3 |
 | ריבוי חשבונות | מכסה ואמינות קשורות גם למכשיר: device ו-attestation | FR-47 |
 | מפעיל | חסימה, וסימון של כל התצפיות של התורם לבדיקה מחדש | FR-46 |
 
-**רמת אמינות:** מחושבת ב-`trust.domain.reliability_level(source, age, confirmations, match_state)`, לפי הטבלה ב-FR-44. כשההתאמה עדיין לא סופית, הרמה המקסימלית היא צהוב (FR-39).
+**רמת אמינות:** מחושבת ב-`trust.service.reliability_level(source, age, confirmations, match_state)`, לפי הטבלה ב-FR-44. כשההתאמה עדיין לא סופית, הרמה המקסימלית היא צהוב (FR-39).
 
 ## 11. אבטחה ופרטיות
 
 | נושא | יישום | NFR/FR |
 |---|---|---|
-| הצפנה | TLS 1.2 ומעלה בכל התקשורת. Cloud SQL מוצפן במנוחה. סודות ב-Secret Manager | NFR-8 |
+| הצפנה | HTTPS (TLS 1.2 ומעלה) דרך Caddy. הדיסק של השרת מוצפן כברירת מחדל ב-Oracle `[לאמת]`. סודות בקובץ `.env` עם הרשאות מוגבלות, מחוץ ל-git | NFR-8 |
+| רשת | פתוחים רק הפורטים 443 ו-80 (להנפקת התעודה). SSH עם מפתח בלבד. Postgres לא חשוף החוצה. עדכוני אבטחה אוטומטיים (`unattended-upgrades`) | NFR-8 |
 | הזדהות והרשאה | Firebase ID token מאומת בשרת. device token חתום (JWT קצר מועד) לאורח. תפקיד operator מוגדר ב-custom claim | NFR-9 |
-| תמונות | לא נשמרות אף פעם (AD-7). בבדיקה אוטומטית ב-CI מוודאים ש-handler של `/receipts` לא כותב לדיסק או ללוג | FR-30, NFR-11 |
-| טשטוש | בשני שלבים (AD-8), ו-scrub_pii על הטקסט שחולץ | FR-27, FR-28 |
-| מיקום | נשלח רק בבקשת ההשוואה. לא נשמר. במטמון נשמר geohash7 בלבד, ברדיוס של כ-150 מטרים, ובלי קישור למשתמש | NFR-12 |
-| מינימום נתונים | ב-users נשמרים רק uid ו-email. השם הפרטי שמור במכשיר בלבד (UX) | FR-2 |
-| אנונימיות התורמים | `contributor_user_id` לא חשוף ב-API. מחיקת חשבון מאפסת אותו ל-NULL ושומרת את התצפית | FR-6, NFR-13 |
+| תמונות | לא נשמרות, ו**לא יוצאות מהשרת** (AD-7). ה-OCR רץ אצלנו. בדיקה אוטומטית ב-CI מוודאת שאין כתיבה לדיסק או ללוג בנתיב `/receipts` | FR-30, NFR-11 |
+| טשטוש | במכשיר, לפני השליחה (AD-8). בשרת, `scrub_pii` על הטקסט לפני שמירה (FR-28) | FR-27, FR-28 |
+| מיקום | נשלח רק בבקשת ההשוואה. לא נשמר. במטמון נשמר geohash7 בלבד, בלי קישור למשתמש | NFR-12 |
+| מינימום נתונים | ב-users נשמר רק uid, בלי מייל. השם הפרטי שמור במכשיר בלבד | FR-2 |
+| אנונימיות התורמים | `contributor_user_id` לא חשוף ב-API. מחיקת חשבון מאפסת אותו ל-NULL | FR-6, NFR-13 |
 | מחיקת חשבון | soft delete מיידי, ומחיקה קשה תוך 30 יום, ב-job יומי | FR-6 |
-| לוגים | JSON בלי גוף בקשה, בלי מיקום ובלי טוקנים. `subject_hash` במקום מזהה | NFR-25 |
-| ספקים חיצוניים | Claude (תמונה מטושטשת, שמירה זמנית אצל הספק, בקשה ל-ZDR), Google Routes, ו-Firebase. מסמך עיבוד נתונים לכל ספק `[לאמת משפטית]` | NFR-14 |
-| שימוש לרעה | App Check והגבלת קצב. ה-API לא מאפשר להוריד את כל המאגר | NFR-10 |
+| לוגים | JSON בלי גוף בקשה, בלי מיקום ובלי טוקנים | NFR-25 |
+| ספקים חיצוניים | **Firebase** (הזדהות), **openrouteservice** (שולח קואורדינטות של נקודת המוצא והסניפים, בלי מזהה משתמש), **Sentry** (שגיאות, בלי PII). אף ספק לא מקבל תמונות | NFR-14 |
+| גיבויים | `pg_dump` מוצפן, לילי, ל-Object Storage, עם שמירה של 14 יום. בדיקת שחזור פעם בחודש | NFR-5 |
+| שימוש לרעה | App Check (Play Integrity) והגבלת קצב. ה-API לא מאפשר להוריד את כל המאגר | NFR-10 |
 
 ## 12. סקיילביליות
 
-**יעד ה-MVP:** כ-10 אלף משתמשים, וכ-1,000 השוואות ביום. `[הנחה]`
+**יעד ה-MVP:** פיילוט של כמה מאות עד כמה אלפי משתמשים. `[הנחה]`
 
-- **API:** Cloud Run עם autoscale. מינימום של מופע אחד בייצור, כדי למנוע cold start. כל מופע מטפל בעד 20 בקשות במקביל `[הנחה]`.
-- **בסיס נתונים:**
-  - `price_observations` גדלה בערך כך: 3 רשתות × כ-300 סניפים × כ-10 אלף מוצרים, ועדכון כל 6 שעות.
-  - בפועל רק שינויים נשמרים, כי קובץ זהה מדולג (AD-14). צריך גם לסנן שורות בלי שינוי מחיר `[הנחה]`.
-  - הטבלה מחולקת לפי חודש. אחרי 6 חודשים, הנתונים עוברים ל-archive.
-- **current_prices:** materialized view עם רענון בו-זמני (refresh concurrently).
-- **זמני נסיעה:** המטמון לפי geohash מוריד את מספר הקריאות ל-Routes ככל שיש יותר משתמשים באותו אזור.
-- **צוואר בקבוק צפוי:** החילוץ ב-LLM. הוא סינכרוני, כ-5–12 שניות. Cloud Run מתרחב לפי concurrency, ויש timeout של 30 שניות.
+- **שרת אחד מספיק לפיילוט:** 4 ליבות ARM ו-24GB זיכרון מספיקים ל-API, ל-worker ול-Postgres יחד. `[הנחה: ייבדק בבדיקת עומס]`
+- **בסיס הנתונים:** נשמרים רק מחירים שהשתנו (§6). `price_observations` מחולקת לפי חודש. אחרי 6 חודשים, הנתונים עוברים ל-archive.
+- **צוואר בקבוק 1, ORS:** 500 בקשות matrix ביום. כל השוואה צורכת לכל היותר בקשה אחת, ובקשה נשלחת רק כשאין פגיעה במטמון. כך יש מקום לכמה מאות השוואות ביום. המטמון לפי geohash מוריד את הצריכה ככל שיותר משתמשים מאותו אזור.
+- **צוואר בקבוק 2, OCR:** Tesseract רץ על CPU. החילוץ מוגבל ל-2 חשבוניות במקביל, כדי לא לפגוע בזמני ההשוואה.
+- **מתי מרחיבים:** כשאחד מהספים האלה נחצה לאורך זמן:
+  - p95 של ההשוואה מעל 3 שניות
+  - יותר מ-400 קריאות ORS ביום
+  - CPU מעל 70%
+- **מסלול ההרחבה, לפי הסדר** (רק כשצריך):
+  1. **ORS בהתקנה עצמית** על אותו שרת. קוד פתוח, ובלי מגבלת בקשות. דורש זיכרון לנתוני המפה של ישראל.
+  2. **הפרדת Postgres** לשרת שני, גם הוא ב-Always Free.
+  3. **מעבר לשירותים מנוהלים בתשלום**, כמו Cloud Run ו-Cloud SQL ב-me-west1 (התכנון הקודם).
+
+  הקוד לא משתנה במעבר, כי הכול כבר בקונטיינרים.
 
 ## 13. פריסה וסביבות
 
-| סביבה | פרויקט GCP | נתונים | אפליקציה |
+| סביבה | איפה | נתונים | אפליקציה |
 |---|---|---|---|
-| dev | cartwise-dev (me-west1) | נתוני דמה, ורשת אחת אמיתית | Expo dev client |
-| staging | cartwise-staging | קליטה אמיתית מכל רשתות ה-MVP | EAS internal distribution / TestFlight |
-| prod | cartwise-prod | אמיתי | App Store / Google Play |
+| dev | מחשב המפתחת: `docker compose up` | נתוני דמה, ורשת אחת אמיתית | Expo dev client על מכשיר Android |
+| prod | שרת Oracle Always Free בירושלים | אמיתי | APK להפצה ישירה, או Google Play (בדיקה פנימית ואחר כך ייצור) |
+
+**סביבת staging נפרדת:** אין ב-MVP, כדי לחסוך. אפשר להריץ אותה כ-compose project נוסף על אותו שרת, אם יידרש. `[הנחה]`
 
 **תהליך CI/CD:**
-1. כל PR מריץ lint, type check, unit tests, eval על מדגם קטן, ובדיקות פרטיות.
-2. merge ל-main בונה image ב-Cloud Build ופורס ל-staging.
-3. tag פורס לייצור, אחרי אישור ידני.
+0. **הריפו ב-GitHub ציבורי** (החלטה מ-2026-10-28). המשמעות:
+   - **סודות:** מפתחות, סיסמאות ומפתח ה-SSH נשמרים רק ב-GitHub Secrets ובקובץ `.env` בשרת. אף פעם לא בקוד.
+   - **סריקת סודות:** gitleaks רץ על כל PR, וחוסם merge.
+   - **מדגם הקבלות, וכל נתון אמיתי של משתמשים:** לא נכנסים לריפו בשום מקרה. הם נשמרים באחסון פרטי (למשל bucket פרטי ב-Oracle Object Storage). ב-CI רץ eval רק על קבלות סינתטיות.
+1. כל PR מריץ ב-GitHub Actions: lint, type check, unit tests, eval קטן על נתונים סינתטיים, בדיקות פרטיות וסריקת סודות.
+2. merge ל-main בונה images (ARM64) ומעלה ל-GitHub Container Registry (חינמי).
+3. tag גורם לפריסה: SSH לשרת, `docker compose pull`, `alembic upgrade head`, ו-`docker compose up -d`.
 
-**מיגרציות:** Alembic, שרץ כ-Cloud Run Job לפני הפריסה.
-
-**אפליקציה:** EAS Build ו-EAS Update לתיקונים ב-JavaScript. שינויים ב-native עוברים בנייה מלאה.
-
-**Infrastructure-as-code:** Deferred (ראו Spine).
+**חלופה, אם אין מקום פנוי ב-Oracle ירושלים:**
+- **A:** Oracle באזור אחר, למשל פרנקפורט, והקליטה בלבד רצה ממחשב בישראל או מ-Cloud Run Job ב-me-west1, בתוך המכסה החינמית `[לאמת]`.
+- **B:** Neon החינמי (1GB, PostGIS) ו-Cloud Run, בתוך המכסה החינמית. במקרה הזה צריך להגביל את הקליטה לסניפים באזור הפיילוט, כדי לא לחרוג מנפח האחסון.
 
 ## 14. תוכנית בדיקות
 
@@ -467,11 +498,11 @@ stateDiagram-v2
 | Contract | schemathesis מול OpenAPI | שה-API תואם לסכמה ולפורמט השגיאות (AD-13) | |
 | Adapters של קליטה | קבצי XML שמורים (fixtures) לכל רשת | parsing, מבצעים, סניפים | |
 | Eval: התאמה | מדגם מתויג של כ-500 כינויים | SM-1 (precision ≥ 90%), כיול θ | בכל שינוי במנגנון |
-| Eval: חילוץ | מדגם של כ-100 חשבוניות אמיתיות, מטושטשות ומתויגות | SM-2 (≥ 80%), השוואה בין דגמים | לפני בחירת דגם, ובכל שינוי prompt |
-| פרטיות | מדגם חשבוניות עם PII סינתטי | SM-3: 0% PII אחרי טשטוש וב-DB. בדיקה סטטית שאין כתיבת תמונה או לוג | חוסם merge |
-| E2E באפליקציה | Maestro | Flows 1–7 מ-EXPERIENCE.md, כולל RTL | ב-staging |
-| נגישות | בדיקה ידנית עם VoiceOver ו-TalkBack, ו-axe-like lint | תקן 5568 (NFR-16..18) | לפני שחרור |
-| עומס | Locust | NFR-2: 3 שניות ב-p95 על `/comparisons`, ו-NFR-3 | לפני שחרור |
+| Eval: חילוץ | מדגם של כ-100 חשבוניות אמיתיות, מטושטשות ומתויגות, מכמה רשתות וחנויות קטנות. **נשמר מחוץ לריפו הציבורי**, ורץ ידנית או מתוך השרת | SM-2 (≥ 80%): דיוק OCR ו-parser, לכל רשת בנפרד | לפני ההשקה, ובכל שינוי בכללים או בתבניות |
+| פרטיות | מדגם חשבוניות עם PII סינתטי, שנמצא בריפו | SM-3: 0% PII אחרי טשטוש וב-DB. בדיקה סטטית שאין כתיבת תמונה או לוג | חוסם merge |
+| E2E באפליקציה | Maestro | Flows 1–7 מ-EXPERIENCE.md, כולל RTL, על Android | לפני שחרור |
+| נגישות | בדיקה ידנית עם TalkBack, ו-axe-like lint. VoiceOver יתווסף עם iOS | תקן 5568 (NFR-16..18) | לפני שחרור |
+| עומס | Locust | NFR-2 ו-NFR-3 על השרת החינמי, כשה-OCR וההשוואות רצים במקביל | לפני שחרור |
 | ניטור איכות בייצור | dashboard | SM-1..SM-9 (NFR-24), ובדיקה מדגמית חודשית | שוטף |
 
 ## 15. מיפוי כיסוי ה-PRD
@@ -488,10 +519,10 @@ stateDiagram-v2
 | FR-47..FR-49 | quota, AD-11 |
 | FR-50..FR-51 | spending, §5 |
 | NFR-1..NFR-4 | §9, §12, §14 (עומס) |
-| NFR-5..NFR-7 | Cloud Run ו-Cloud SQL (HA בייצור `[הנחה]`). §6: השוואות על המחירים האחרונים. NFR-7: רשימות במכשיר |
+| NFR-5..NFR-7 | שרת אחד עם גיבוי לילי וניטור זמינות (§11, §13). ⚠️ זמינות של 99.5% על שרת יחיד היא `[הנחה]`. §6: השוואות על המחירים האחרונים. NFR-7: רשימות במכשיר |
 | NFR-8..NFR-15 | §11 |
 | NFR-16..NFR-22 | צד האפליקציה: מסמכי UX ו-tokens.ts. החיפוש (NFR-21) ב-`normalize_he` |
-| NFR-23 | Expo SDK 56 (iOS ו-Android, בגרסאות שנתמכות) |
+| NFR-23 | Expo SDK 56: Android ב-MVP, ו-iOS בגרסה 1.1 |
 | NFR-24, NFR-25 | §13, §14, conventions בלוגים |
 | NFR-26 | AD-10, מטמון, סינון אווירי |
 
@@ -499,17 +530,19 @@ stateDiagram-v2
 
 | # | נושא | השפעה | מה עושים |
 |---|---|---|---|
-| Q1 | ✅ **הוחלט B:** השמירה הזמנית אצל הספק מתקבלת, FR-30 עודכן, ומגישים בקשה ל-ZDR. **הרקע: FR-30 מול ספק ה-LLM.** FR-30 דורש שהתמונה "לא נשמרת אצל צד שלישי". ZDR של Anthropic דורש אישור. בלי ZDR, הספק עשוי לשמור את הקלט לתקופה מוגבלת | חוסם את ההשקה, לא את הפיתוח | **החלטה שלך:** (א) להגיש בקשה ל-ZDR, ולא להשיק סריקה בלי אישור. (ב) לקבל שמירה זמנית אצל הספק של תמונה **שכבר טושטשה פעמיים**, לעדכן את FR-30 ולציין זאת במדיניות הפרטיות |
-| Q2 | זמינות של Cloud Run, Cloud SQL ו-PostGIS ב-me-west1 | פריסה | אימות בקונסולה, ב-S3.1 |
-| Q3 | איכות הנתונים והעלות של Routes API (TRANSIT) בישראל | FR-18, NFR-26 | ניסוי על 50 נקודות בירושלים |
+| Q1 | ✅ **נסגר (2026-10-28):** ה-OCR רץ על השרת שלנו, והתמונה לא יוצאת לאף צד שלישי. ההחלטה הקודמת Q1-B (שמירה זמנית אצל ספק LLM) כבר לא רלוונטית | — | — |
+| Q2 | מקום פנוי ל-Always Free באזור ירושלים, ושהגיבוי ל-Object Storage נכלל במכסה החינמית | פריסה | פתיחת חשבון ובדיקה, לפני תחילת הפיתוח. אם אין מקום, החלופות ב-§13 |
+| Q3 | ✅ **הוחלט:** openrouteservice להליכה ולרכב. תחבורה ציבורית בגרסה 1.1. **נשאר לבדוק:** תנאי השימוש של ORS לאפליקציה, ואיכות הנתונים בירושלים | FR-18 | ניסוי על 50 נקודות |
 | Q4 | הספרייה `il-supermarket-scraper`: רישיון ויציבות, והאם מבצעי מועדון מזוהים (A3) | E3 | ב-S3.1 |
-| Q5 | OCR של ספרות במכשיר: ML Kit ו-Apple Vision דרך Expo | FR-27 | ניסוי, ב-spike של E6 |
+| Q5 | זיהוי ספרות במכשיר עם ML Kit, דרך Expo | FR-27 | ניסוי, ב-spike של E6 |
 | Q6 | מקור לקטגוריות ומותגים של מוצרים (שאלה פתוחה 5 ב-PRD) | FR-50, FR-4 | מהקבצים הרשמיים. אם חסר, תיוג ידני של הקטגוריות העיקריות |
+| Q7 | **דיוק ה-OCR המקומי בחשבוניות עבריות** | SM-2 | eval על מדגם של כ-100 חשבוניות, לפני שמתחייבים ליעד. אם הדיוק נמוך מדי, החלופות ב-§7 סעיף 8 |
+| Q8 | תנאי השימוש של Nominatim, ומקור המפה באפליקציה, בשימוש חינמי | FR-14, FR-21 | בדיקה לפני ההשקה |
 
 **הנחות עיקריות:**
-- המהירויות לסינון האווירי: 6, 60 ו-40 קמ"ש.
-- זמן החיים של המטמון: 7 ימים, ויום אחד לתחבורה ציבורית.
+- המהירויות לסינון האווירי: 6 קמ"ש בהליכה ו-60 קמ"ש ברכב.
+- זמן החיים של המטמון: 7 ימים.
 - משקלי נוסחת ההתאמה.
 - הגבלות הקצב.
-- היקף ה-MVP: כ-10 אלף משתמשים.
-- בחירת הדגם: Sonnet 5.5 לעומת Haiku 5.5.
+- היקף הפיילוט: כמה מאות עד כמה אלפי משתמשים.
+- השרת החינמי מספיק לפיילוט.
