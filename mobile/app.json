@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "CartWise",
+    "slug": "cartwise",
+    "version": "1.0.0",
+    "scheme": "cartwise",
+    "platforms": [
+      "android"
+    ],
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "android": {
+      "package": "app.cartwise",
+      "adaptiveIcon": {
+        "backgroundColor": "#FBFAF7",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-localization",
+        {
+          "supportsRTL": true,
+          "forcesRTL": true
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#FBFAF7"
+        }
+      ],
+      "expo-status-bar",
+      "expo-asset"
+    ]
+  }
+}
