@@ -1,0 +1,27 @@
+# LF line endings for all text files, on every OS.
+* text=auto eol=lf
+
+# Binary files: no line-ending conversion, no diff.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.jar binary
+*.keystore binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.apk binary
+*.aab binary
+*.jks binary
+*.p12 binary
+*.heic binary
+
+# Windows scripts need CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf

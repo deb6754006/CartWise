@@ -1,0 +1,58 @@
+# gitleaks config. The default rules apply; the allowlists below are kept minimal.
+# Each entry is scoped to specific files (condition = "AND") and matches whole, anchored
+# lines or exact secret shapes, so any other value in those files is still detected.
+# Every entry must say why it is safe.
+
+[extend]
+useDefault = true
+
+# Local dev Postgres credentials (cartwise:cartwise). Non-secret: they only work against the
+# local dev database. Note the prod validator in config.py rejects only this exact localhost
+# URL when ENV=prod; it does not reject other URLs with these credentials.
+# The default rules do not flag these lines today; listed so a rule update cannot.
+[[allowlists]]
+description = "Dev Postgres credentials in deploy/docker-compose.yml"
+condition = "AND"
+paths = ['''^deploy/docker-compose\.yml$''']
+regexTarget = "line"
+regexes = [
+  '''^\s*POSTGRES_PASSWORD: cartwise$''',
+  '''^\s*DATABASE_URL: postgresql\+psycopg://cartwise:cartwise@db:5432/cartwise$''',
+]
+
+[[allowlists]]
+description = "Dev Postgres URL default in backend/app/core/config.py"
+condition = "AND"
+paths = ['''^backend/app/core/config\.py$''']
+regexTarget = "line"
+regexes = [
+  '''^DEV_DATABASE_URL = "postgresql\+psycopg://cartwise:cartwise@localhost:5432/cartwise"$''',
+]
+
+[[allowlists]]
+description = "Dev Postgres URL in .env.example"
+condition = "AND"
+paths = ['''^\.env\.example$''']
+regexTarget = "line"
+regexes = [
+  '''^DATABASE_URL=postgresql\+psycopg://cartwise:cartwise@localhost:5432/cartwise$''',
+]
+
+# Fake, unreachable URL used by the DB connect-failure test.
+[[allowlists]]
+description = "Fake DB URL in backend/tests/unit/test_core.py"
+condition = "AND"
+paths = ['''^backend/tests/unit/test_core\.py$''']
+regexTarget = "line"
+regexes = [
+  '''^\s*bad = make_engine\("postgresql\+psycopg://nobody:wrong@127\.0\.0\.1:1/none"\)$''',
+]
+
+# BMad install manifest: sha256 hashes of the installed skill files, not secrets.
+# Only a bare 64-hex-digit secret is allowed; anything else in the file is still detected.
+[[allowlists]]
+description = "sha256 file hashes in the BMad install manifest"
+condition = "AND"
+paths = ['''^_bmad/_config/files-manifest\.csv$''']
+regexTarget = "secret"
+regexes = ['''^[0-9a-f]{64}$''']

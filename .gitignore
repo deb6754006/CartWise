@@ -1,0 +1,44 @@
+# Root ignores. Complements backend/.gitignore, mobile/.gitignore and deploy/.gitignore.
+# The repo is public: no secrets, keys, .env files or real receipts.
+
+# env files (only the example is committed)
+.env
+.env.*
+!.env.example
+
+# real receipts (personal data)
+data/receipts-real/
+
+# keys and certificates
+*.pem
+*.key
+*.crt
+!deploy/no-extra-ca.crt
+*.jks
+*.p12
+*.keystore
+
+# Firebase / Android config with project keys
+google-services.json
+
+# build output
+build/
+dist/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Claude Code local settings and locks
+.claude/settings.local.json
+.claude/*.lock
+
+# BMad render output
+_bmad/render/*
+!_bmad/render/.gitignore
