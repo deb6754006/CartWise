@@ -10,6 +10,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
+import { ensureDeviceToken } from '../src/identity/device';
 import { ensureRTL } from '../src/rtl';
 import { tokens } from '../src/theme/tokens';
 
@@ -25,6 +26,12 @@ export default function RootLayout() {
     Rubik_800ExtraBold,
   });
   const ready = fontsLoaded || fontError != null;
+
+  useEffect(() => {
+    // Guest identity: register in the background. Never blocks rendering; failures are
+    // retried on the next launch or the next API request.
+    ensureDeviceToken().catch(() => {});
+  }, []);
 
   useEffect(() => {
     // Fall back to the system font rather than block the app.

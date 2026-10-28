@@ -38,6 +38,26 @@ regexes = [
   '''^DATABASE_URL=postgresql\+psycopg://cartwise:cartwise@localhost:5432/cartwise$''',
 ]
 
+# Dev-only device token signing key (Story 1.1). Non-secret: config.py rejects exactly this
+# value (and any value shorter than 32 characters) when ENV=prod.
+[[allowlists]]
+description = "Dev device token key default in backend/app/core/config.py"
+condition = "AND"
+paths = ['''^backend/app/core/config\.py$''']
+regexTarget = "line"
+regexes = [
+  '''^DEV_DEVICE_TOKEN_SECRET = "cartwise-dev-only-device-token-signing-key"  # noqa: S105$''',
+]
+
+[[allowlists]]
+description = "Dev device token key in .env.example"
+condition = "AND"
+paths = ['''^\.env\.example$''']
+regexTarget = "line"
+regexes = [
+  '''^DEVICE_TOKEN_SECRET=cartwise-dev-only-device-token-signing-key$''',
+]
+
 # Fake, unreachable URL used by the DB connect-failure test.
 [[allowlists]]
 description = "Fake DB URL in backend/tests/unit/test_core.py"

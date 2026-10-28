@@ -303,7 +303,11 @@ def test_settings_validation() -> None:
         Settings(ENV="staging")  # type: ignore[arg-type]
     with pytest.raises(ValidationError, match="DATABASE_URL"):
         Settings(ENV="prod")
-    ok = Settings(ENV="prod", DATABASE_URL="postgresql+psycopg://app@db:5432/cartwise")
+    ok = Settings(
+        ENV="prod",
+        DATABASE_URL="postgresql+psycopg://app@db:5432/cartwise",
+        DEVICE_TOKEN_SECRET="p" * 40,
+    )
     assert ok.ENV == "prod"
 
 

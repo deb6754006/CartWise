@@ -1,6 +1,6 @@
 """Database engine, sessions and the declarative base."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from sqlalchemy import Engine, MetaData, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -34,3 +34,8 @@ def get_session() -> Iterator[Session]:
         yield session
     finally:
         session.close()
+
+
+def get_session_factory() -> Callable[[], Session]:
+    """For dependencies that open a session only when needed (e.g. core.auth)."""
+    return SessionLocal
