@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-28-2026 12:00
-last_updated: 10-28-2026 17:10
+last_updated: 10-28-2026 18:40
 project: CartWise
 project_key: NOKEY
 tracking_system: file-system
@@ -41,8 +41,8 @@ development_status:
   0-3-ci-והיגיינת-ריפו-p0: done
   epic-0-retrospective: optional
 
-  epic-1: backlog
-  1-1-שימוש-כאורח-fr-1-p0: backlog
+  epic-1: in-progress
+  1-1-שימוש-כאורח-fr-1-p0: done
   1-2-הרשמה-בחשבון-google-בזמן-הצורך-fr-2-p0-apple-עם-ios-בגרסה-1: backlog
   1-3-הגדרת-מועדונים-fr-3-p0: backlog
   1-4-הגדרת-מותגים-רצויים-fr-4-p0: backlog
