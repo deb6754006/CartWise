@@ -31,7 +31,7 @@ function BrandsContent() {
   if (status === 'error') {
     return (
       <View style={styles.content}>
-        <Text accessibilityRole="alert" style={styles.message}>
+        <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.message}>
           {t('brands.loadError')}
         </Text>
         <Pressable

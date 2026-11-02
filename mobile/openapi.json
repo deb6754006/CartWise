@@ -277,6 +277,67 @@
         }
       }
     },
+    "/v1/me/prefs": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Get My Prefs",
+        "operationId": "get_my_prefs_v1_me_prefs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrefsOut"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Put My Prefs",
+        "description": "Save this subject's default range.",
+        "operationId": "put_my_prefs_v1_me_prefs_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrefsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrefsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/chains": {
       "get": {
         "tags": [
@@ -643,6 +704,65 @@
           "brands"
         ],
         "title": "MyBrandsOut"
+      },
+      "PrefsIn": {
+        "properties": {
+          "default_mode": {
+            "type": "string",
+            "enum": [
+              "walk",
+              "car"
+            ],
+            "title": "Default Mode"
+          },
+          "default_minutes": {
+            "type": "integer",
+            "enum": [
+              5,
+              10,
+              15,
+              20,
+              30
+            ],
+            "title": "Default Minutes"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "default_mode",
+          "default_minutes"
+        ],
+        "title": "PrefsIn"
+      },
+      "PrefsOut": {
+        "properties": {
+          "default_mode": {
+            "type": "string",
+            "enum": [
+              "walk",
+              "car"
+            ],
+            "title": "Default Mode"
+          },
+          "default_minutes": {
+            "type": "integer",
+            "enum": [
+              5,
+              10,
+              15,
+              20,
+              30
+            ],
+            "title": "Default Minutes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "default_mode",
+          "default_minutes"
+        ],
+        "title": "PrefsOut"
       },
       "ValidationError": {
         "properties": {

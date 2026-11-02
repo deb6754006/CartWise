@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.identity.models import TravelMinutes, TravelMode
+
 
 class DeviceRegisterIn(BaseModel):
     # Lone surrogates are rejected by pydantic itself (string_unicode -> 422), so the
@@ -58,3 +60,16 @@ class MyBrandOut(BaseModel):
 class MyBrandsOut(BaseModel):
     # With names, unlike clubs: the app has no full list of brands to look them up in.
     brands: list[MyBrandOut]
+
+
+class PrefsIn(BaseModel):
+    # extra="forbid": a location (or anything else) is rejected, not silently dropped.
+    model_config = ConfigDict(extra="forbid")
+
+    default_mode: TravelMode
+    default_minutes: TravelMinutes
+
+
+class PrefsOut(BaseModel):
+    default_mode: TravelMode
+    default_minutes: TravelMinutes

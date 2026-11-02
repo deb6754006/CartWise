@@ -2,12 +2,26 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from sqlalchemy import CHAR, DateTime, ForeignKey, String, Uuid, func
+from sqlalchemy import (
+    CHAR,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    SmallInteger,
+    String,
+    Uuid,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
 from app.core.ids import new_id
+
+# No public transport: it comes in version 1.1. The values match the checks on user_prefs.
+TravelMode = Literal["walk", "car"]
+TravelMinutes = Literal[5, 10, 15, 20, 30]
 
 
 class User(Base):
@@ -68,3 +82,20 @@ class UserBrand(Base):
     brand_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("brands.id", ondelete="CASCADE"), primary_key=True, index=True
     )
+
+
+class UserPrefs(Base):
+    """A subject's default range: one row at most. subject_id has no FK (see UserClub).
+
+    The user's location is never stored here.
+    """
+
+    __tablename__ = "user_prefs"
+    __table_args__ = (
+        CheckConstraint("default_mode IN ('walk', 'car')", name="default_mode"),
+        CheckConstraint("default_minutes IN (5, 10, 15, 20, 30)", name="default_minutes"),
+    )
+
+    subject_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    default_mode: Mapped[TravelMode] = mapped_column(String(8))
+    default_minutes: Mapped[TravelMinutes] = mapped_column(SmallInteger)

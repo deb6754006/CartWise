@@ -18,7 +18,7 @@ export function ClubsList() {
   if (status === 'error') {
     return (
       <View style={styles.list}>
-        <Text accessibilityRole="alert" style={styles.message}>
+        <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.message}>
           {t('clubs.loadError')}
         </Text>
         <Pressable

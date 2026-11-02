@@ -106,6 +106,7 @@ describe('ClubsList', () => {
     mockGet.mockRejectedValue(new TypeError('Network request failed'));
     await renderList();
     expect(screen.getByText(LOAD_ERROR)).toBeTruthy();
+    expect(screen.getByRole('alert').props.accessibilityLiveRegion).toBe('polite');
     expect(screen.queryAllByRole('switch')).toHaveLength(0);
 
     server();

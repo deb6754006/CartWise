@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { t } from '../../src/i18n';
 import { loadBrands } from '../../src/profile/useBrands';
 import { loadClubs } from '../../src/profile/useClubs';
+import { loadRange, type Range } from '../../src/profile/useRange';
 import { tokens } from '../../src/theme/tokens';
 
 const { colors, spacing, typography } = tokens;
@@ -13,22 +14,27 @@ const { colors, spacing, typography } = tokens;
 const countClubs = () => loadClubs().then(({ clubIds }) => clubIds.length);
 const countBrands = () => loadBrands().then((brands) => brands.length);
 
+const shownRange = ({ default_mode, default_minutes }: Range) =>
+  `${t(`range.icons.${default_mode}`)} ${default_minutes} ${t('range.minutesShort')}`;
+const spokenRange = ({ default_mode, default_minutes }: Range) =>
+  `${t(`range.modes.${default_mode}`)}, ${default_minutes} ${t('range.minutes')}`;
+
 /**
- * A count that is refreshed on every return to the screen.
+ * A value that is refreshed on every return to the screen.
  * null: not known (still loading for the first time, or the last load failed).
  */
-function useCountOnFocus(load: () => Promise<number>): number | null {
-  const [count, setCount] = useState<number | null>(null);
+function useValueOnFocus<T>(load: () => Promise<T>): T | null {
+  const [value, setValue] = useState<T | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let current = true;
       load().then(
         (loaded) => {
-          if (current) setCount(loaded);
+          if (current) setValue(loaded);
         },
         () => {
-          if (current) setCount(null);
+          if (current) setValue(null);
         },
       );
       return () => {
@@ -37,38 +43,43 @@ function useCountOnFocus(load: () => Promise<number>): number | null {
     }, [load]),
   );
 
-  return count;
+  return value;
 }
 
-function CountRow({
+/** A row leading to another screen. With no value, it is shown without one. */
+function ValueRow({
   label,
-  count,
+  value,
+  spokenValue = value,
   onPress,
 }: {
   label: string;
-  count: number | null;
+  value: string | null;
+  /** When the value does not read well aloud, as with an icon. */
+  spokenValue?: string | null;
   onPress: () => void;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={count === null ? label : `${label}: ${count}`}
+      accessibilityLabel={spokenValue === null ? label : `${label}: ${spokenValue}`}
       onPress={onPress}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
       <Text style={styles.rowLabel}>{label}</Text>
       <Text style={styles.rowValue}>
-        {count === null ? t('nav.forwardArrow') : `${count} ${t('nav.forwardArrow')}`}
+        {value === null ? t('nav.forwardArrow') : `${value} ${t('nav.forwardArrow')}`}
       </Text>
     </Pressable>
   );
 }
 
-/** SCR-PROFILE. So far, the clubs and brands rows: the others come with their own stories. */
+/** SCR-PROFILE. So far, the comparison rows: the others come with their own stories. */
 export default function ProfileScreen() {
   const router = useRouter();
-  const clubCount = useCountOnFocus(countClubs);
-  const brandCount = useCountOnFocus(countBrands);
+  const clubCount = useValueOnFocus(countClubs);
+  const brandCount = useValueOnFocus(countBrands);
+  const range = useValueOnFocus(loadRange);
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
@@ -77,16 +88,23 @@ export default function ProfileScreen() {
       </Text>
       <Text style={styles.section}>{t('profile.comparison')}</Text>
       <View style={styles.card}>
-        <CountRow
+        <ValueRow
           label={t('profile.clubs')}
-          count={clubCount}
+          value={clubCount === null ? null : String(clubCount)}
           onPress={() => router.push('/clubs', { dangerouslySingular: true })}
         />
         <View style={styles.divider} />
-        <CountRow
+        <ValueRow
           label={t('profile.brands')}
-          count={brandCount}
+          value={brandCount === null ? null : String(brandCount)}
           onPress={() => router.push('/brands', { dangerouslySingular: true })}
+        />
+        <View style={styles.divider} />
+        <ValueRow
+          label={t('profile.range')}
+          value={range === null ? null : shownRange(range)}
+          spokenValue={range === null ? null : spokenRange(range)}
+          onPress={() => router.push('/range', { dangerouslySingular: true })}
         />
       </View>
     </SafeAreaView>

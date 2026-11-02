@@ -5,28 +5,37 @@ import ProfileScreen from '../app/(tabs)/profile';
 import { SEARCH_DEBOUNCE_MS } from '../src/profile/useBrands';
 import BrandsScreen from '../app/brands';
 import ClubsScreen from '../app/clubs';
+import RangeScreen from '../app/range';
 
 // A small fake server, jest.mock calls are hoisted above the imports.
 const mockServer: {
   clubs: unknown[];
   marks: string[];
   brands: { id: string; name: string }[];
+  range: { default_mode: string; default_minutes: number };
   fail: boolean;
   brandsFail: boolean;
+  rangeFail: boolean;
   /** While set, answers wait for it. They carry the data as it was when asked. */
   hold: Promise<void> | null;
 } = {
   clubs: [],
   marks: [],
   brands: [],
+  range: { default_mode: 'car', default_minutes: 15 },
   fail: false,
   brandsFail: false,
+  rangeFail: false,
   hold: null,
 };
 const mockPut = jest.fn();
 jest.mock('../src/api/client', () => ({
   api: {
     GET: async (path: string) => {
+      if (path === '/v1/me/prefs') {
+        if (mockServer.rangeFail) throw new TypeError('Network request failed');
+        return { data: mockServer.range };
+      }
       if (path.includes('brands')) {
         if (mockServer.brandsFail) throw new TypeError('Network request failed');
         if (path === '/v1/brands/search') return { data: mockBrands };
@@ -40,8 +49,25 @@ jest.mock('../src/api/client', () => ({
       await mockServer.hold;
       return answer;
     },
-    PUT: async (path: string, init: { body: { club_ids?: string[]; brand_ids?: string[] } }) => {
+    PUT: async (
+      path: string,
+      init: {
+        body: {
+          club_ids?: string[];
+          brand_ids?: string[];
+          default_mode?: string;
+          default_minutes?: number;
+        };
+      },
+    ) => {
       mockPut(path, init);
+      if (path === '/v1/me/prefs') {
+        mockServer.range = {
+          default_mode: init.body.default_mode ?? '',
+          default_minutes: init.body.default_minutes ?? 0,
+        };
+        return { data: mockServer.range };
+      }
       if (init.body.brand_ids) {
         const ids = init.body.brand_ids;
         mockServer.brands = mockBrands.filter((brand) => ids.includes(brand.id));
@@ -68,6 +94,7 @@ async function renderApp() {
       profile: ProfileScreen,
       clubs: ClubsScreen,
       brands: BrandsScreen,
+      range: RangeScreen,
     },
     { initialUrl: '/profile' },
   );
@@ -82,8 +109,10 @@ describe('SCR-PROFILE', () => {
     mockServer.clubs = CLUBS;
     mockServer.marks = [];
     mockServer.brands = mockBrands.slice(0, 7);
+    mockServer.range = { default_mode: 'car', default_minutes: 15 };
     mockServer.fail = false;
     mockServer.brandsFail = false;
+    mockServer.rangeFail = false;
     mockServer.hold = null;
     mockPut.mockReset();
   });
@@ -155,7 +184,66 @@ describe('SCR-PROFILE', () => {
     await renderApp();
     expect(screen.getByText('7 ←')).toBeTruthy();
     const rows = screen.getAllByRole('button').map((r) => r.props.accessibilityLabel);
-    expect(rows).toEqual(['המועדונים שלי: 0', 'מותגים רצויים: 7']);
+    expect(rows).toEqual([
+      'המועדונים שלי: 0',
+      'מותגים רצויים: 7',
+      'טווח ברירת מחדל: רכב, 15 דקות',
+    ]);
+  });
+
+  it('the range row comes after the brands row, and shows the saved range', async () => {
+    mockServer.range = { default_mode: 'walk', default_minutes: 10 };
+    await renderApp();
+    expect(screen.getByText('🚶 10 דק׳ ←')).toBeTruthy();
+    expect(row('טווח ברירת מחדל: הליכה, 10 דקות')).toBeTruthy();
+  });
+
+  it('range load failed: the row is shown without a value, and the other rows are not hurt', async () => {
+    mockServer.rangeFail = true;
+    await renderApp();
+    expect(row('טווח ברירת מחדל')).toBeTruthy();
+    expect(screen.getByText('←')).toBeTruthy();
+    expect(row('המועדונים שלי: 0')).toBeTruthy();
+    expect(row('מותגים רצויים: 7')).toBeTruthy();
+  });
+
+  it('a guest chooses walking, 10 minutes with no sign-in, and the profile shows it', async () => {
+    const view = await renderApp();
+    expect(screen.getByText('🚗 15 דק׳ ←')).toBeTruthy();
+
+    await act(async () => fireEvent.press(row('טווח ברירת מחדל: רכב, 15 דקות')));
+    expect(view.getPathname()).toBe('/range');
+    expect(screen.queryByText('המשך עם Google')).toBeNull();
+
+    await act(async () => fireEvent.press(screen.getByRole('radio', { name: 'הליכה' })));
+    await act(async () => fireEvent.press(screen.getByRole('radio', { name: '10 דקות' })));
+    expect(mockPut).toHaveBeenLastCalledWith(
+      '/v1/me/prefs',
+      expect.objectContaining({ body: { default_mode: 'walk', default_minutes: 10 } }),
+    );
+
+    await act(async () => fireEvent.press(screen.getByRole('button', { name: 'חזרה' })));
+    expect(view.getPathname()).toBe('/profile');
+    expect(screen.getByText('🚶 10 דק׳ ←')).toBeTruthy();
+
+    // Back in again: the choice was kept.
+    await act(async () => fireEvent.press(row('טווח ברירת מחדל: הליכה, 10 דקות')));
+    expect(screen.getByRole('radio', { name: 'הליכה', checked: true })).toBeTruthy();
+    expect(screen.getByRole('radio', { name: '10 דקות', checked: true })).toBeTruthy();
+  });
+
+  it('a double tap on the range row opens one range screen', async () => {
+    const view = await renderApp();
+    const open = row('טווח ברירת מחדל: רכב, 15 דקות');
+    await act(async () => {
+      fireEvent.press(open);
+      fireEvent.press(open);
+    });
+    expect(view.getPathname()).toBe('/range');
+
+    const backs = screen.getAllByRole('button', { name: 'חזרה' });
+    await act(async () => fireEvent.press(backs[backs.length - 1]));
+    expect(view.getPathname()).toBe('/profile');
   });
 
   it('brands load failed: the row is shown without a number, and the clubs row is not hurt', async () => {

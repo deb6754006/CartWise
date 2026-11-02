@@ -20,6 +20,8 @@ from app.modules.identity.schemas import (
     MeOut,
     MyBrandOut,
     MyBrandsOut,
+    PrefsIn,
+    PrefsOut,
 )
 
 # No prefix: identity owns top-level resources (/v1/devices, /v1/me).
@@ -112,3 +114,25 @@ def put_my_brands(
     """Replace the whole set of brands this subject wants."""
     brands = service.set_brands(session, _subject_uuid(subject), body.brand_ids)
     return MyBrandsOut(brands=[MyBrandOut(id=b.id, name=b.name) for b in brands])
+
+
+@router.get("/me/prefs")
+def get_my_prefs(
+    subject: Annotated[Subject, Depends(require_subject)],
+    session: Annotated[Session, Depends(get_session)],
+) -> PrefsOut:
+    prefs = service.prefs_for_subject(session, _subject_uuid(subject))
+    return PrefsOut(default_mode=prefs.default_mode, default_minutes=prefs.default_minutes)
+
+
+@router.put("/me/prefs")
+def put_my_prefs(
+    body: PrefsIn,
+    subject: Annotated[Subject, Depends(require_subject)],
+    session: Annotated[Session, Depends(get_session)],
+) -> PrefsOut:
+    """Save this subject's default range."""
+    prefs = service.set_prefs(
+        session, _subject_uuid(subject), body.default_mode, body.default_minutes
+    )
+    return PrefsOut(default_mode=prefs.default_mode, default_minutes=prefs.default_minutes)

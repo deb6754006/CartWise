@@ -8,7 +8,15 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.ids import new_id
-from app.modules.identity.models import Device, User, UserBrand, UserClub
+from app.modules.identity.models import (
+    Device,
+    TravelMinutes,
+    TravelMode,
+    User,
+    UserBrand,
+    UserClub,
+    UserPrefs,
+)
 
 
 def upsert_device(session: Session, install_id_hash: str) -> tuple[uuid.UUID, bool]:
@@ -147,3 +155,50 @@ def move_user_brands(session: Session, from_subject: uuid.UUID, to_subject: uuid
         .on_conflict_do_nothing()
     )
     session.execute(delete(UserBrand).where(UserBrand.subject_id == from_subject))
+
+
+def prefs_for_subject(session: Session, subject_id: uuid.UUID) -> UserPrefs | None:
+    return session.get(UserPrefs, subject_id)
+
+
+def _lock_subject_prefs(session: Session, subject_id: uuid.UUID) -> None:
+    """Like _lock_subject_clubs, under a key of its own. A PUT holds only this lock, and link
+    takes it after the clubs' and the brands' locks, so they cannot deadlock."""
+    key = f"user_prefs:{subject_id}"
+    session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(key, 0))))
+
+
+def upsert_user_prefs(
+    session: Session, subject_id: uuid.UUID, mode: TravelMode, minutes: TravelMinutes
+) -> None:
+    _lock_subject_prefs(session, subject_id)
+    values = {"default_mode": mode, "default_minutes": minutes}
+    session.execute(
+        insert(UserPrefs)
+        .values(subject_id=subject_id, **values)
+        .on_conflict_do_update(index_elements=[UserPrefs.subject_id], set_=values)
+    )
+
+
+def move_user_prefs(session: Session, from_subject: uuid.UUID, to_subject: uuid.UUID) -> None:
+    """Delete from_subject's row, and give its values to to_subject if it has no row of its own.
+
+    The lock is needed even with no row to lock: the DELETE does not see a first PUT that is not
+    committed yet, and that choice would stay on the device. With it, a concurrent PUT of
+    from_subject ends either before this (its values are the ones moved) or after the commit
+    (as a new row).
+    """
+    _lock_subject_prefs(session, from_subject)
+    _lock_subject_prefs(session, to_subject)
+    moved = session.execute(
+        delete(UserPrefs)
+        .where(UserPrefs.subject_id == from_subject)
+        .returning(UserPrefs.default_mode, UserPrefs.default_minutes)
+    ).first()
+    if moved is None:
+        return
+    session.execute(
+        insert(UserPrefs)
+        .values(subject_id=to_subject, default_mode=moved[0], default_minutes=moved[1])
+        .on_conflict_do_nothing(index_elements=[UserPrefs.subject_id])
+    )

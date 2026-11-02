@@ -12,6 +12,7 @@ from app.core.errors import AppError
 from app.core.tokens import decode_device_token, invalid_token, issue_device_token
 from app.modules.catalog import service as catalog_service
 from app.modules.identity import repository
+from app.modules.identity.models import TravelMinutes, TravelMode
 
 DEVICE_ALREADY_LINKED_HE = "המכשיר הזה כבר מחובר לחשבון אחר"
 UNKNOWN_CLUB_HE = "אחד המועדונים שנבחרו לא קיים"
@@ -22,6 +23,16 @@ UNKNOWN_BRAND_HE = "אחד המותגים שנבחרו לא קיים"
 # their tables. Hooks run inside the link transaction, once per device, on its first link.
 type TransferHook = Callable[[Session, uuid.UUID, uuid.UUID], None]
 _TRANSFER_HOOKS: list[TransferHook] = []
+
+
+@dataclass(frozen=True, slots=True)
+class Prefs:
+    default_mode: TravelMode
+    default_minutes: TravelMinutes
+
+
+# What a subject that saved no range gets, including whoever skips Onboarding.
+DEFAULT_PREFS = Prefs(default_mode="car", default_minutes=15)
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,8 +94,9 @@ def link(session: Session, firebase_uid: str, device_token: str | None) -> tuple
     - Device already linked to this user: hooks do not run again.
     - Device linked to another user: 409 device_already_linked.
     - Device not linked yet: linked, then every transfer hook runs, in the same transaction.
-    Whenever the device belongs to this user, clubs and brands marked on it move to the user.
-    That is a direct call, not a hook: both tables are identity's own, and a repeat link (after
+    Whenever the device belongs to this user, clubs and brands marked on it move to the user, and
+    so does its range, unless the user already has one (the device's row goes either way).
+    That is a direct call, not a hook: these tables are identity's own, and a repeat link (after
     signing out and marking more as a guest) has to move them too.
     An invalid device token, or a deleted user, is 401 invalid_token. Nothing is committed
     on any error.
@@ -105,6 +117,7 @@ def link(session: Session, firebase_uid: str, device_token: str | None) -> tuple
                 repository.set_device_user(session, device, user.id)
             repository.move_user_clubs(session, device_id, user.id)
             repository.move_user_brands(session, device_id, user.id)
+            repository.move_user_prefs(session, device_id, user.id)
             if first_link:
                 for hook in list(_TRANSFER_HOOKS):
                     hook(session, device_id, user.id)
@@ -173,3 +186,27 @@ def set_brands(
         session.rollback()
         raise
     return brands
+
+
+def prefs_for_subject(session: Session, subject_id: uuid.UUID) -> Prefs:
+    """The default range of this subject (user or device). Epic 5 reads it here.
+
+    A subject that saved none gets DEFAULT_PREFS. Reading creates no row.
+    """
+    row = repository.prefs_for_subject(session, subject_id)
+    if row is None:
+        return DEFAULT_PREFS
+    return Prefs(default_mode=row.default_mode, default_minutes=row.default_minutes)
+
+
+def set_prefs(
+    session: Session, subject_id: uuid.UUID, mode: TravelMode, minutes: TravelMinutes
+) -> Prefs:
+    """Save the subject's default range, replacing the one it had."""
+    try:
+        repository.upsert_user_prefs(session, subject_id, mode, minutes)
+        session.commit()
+    except BaseException:
+        session.rollback()
+        raise
+    return Prefs(default_mode=mode, default_minutes=minutes)

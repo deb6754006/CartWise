@@ -117,6 +117,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/prefs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get My Prefs */
+        get: operations["get_my_prefs_v1_me_prefs_get"];
+        /**
+         * Put My Prefs
+         * @description Save this subject's default range.
+         */
+        put: operations["put_my_prefs_v1_me_prefs_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chains": {
         parameters: {
             query?: never;
@@ -289,6 +310,32 @@ export interface components {
         MyBrandsOut: {
             /** Brands */
             brands: components["schemas"]["MyBrandOut"][];
+        };
+        /** PrefsIn */
+        PrefsIn: {
+            /**
+             * Default Mode
+             * @enum {string}
+             */
+            default_mode: "walk" | "car";
+            /**
+             * Default Minutes
+             * @enum {integer}
+             */
+            default_minutes: 5 | 10 | 15 | 20 | 30;
+        };
+        /** PrefsOut */
+        PrefsOut: {
+            /**
+             * Default Mode
+             * @enum {string}
+             */
+            default_mode: "walk" | "car";
+            /**
+             * Default Minutes
+             * @enum {integer}
+             */
+            default_minutes: 5 | 10 | 15 | 20 | 30;
         };
         /** ValidationError */
         ValidationError: {
@@ -529,6 +576,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MyBrandsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_prefs_v1_me_prefs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrefsOut"];
+                };
+            };
+        };
+    };
+    put_my_prefs_v1_me_prefs_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PrefsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrefsOut"];
                 };
             };
             /** @description Validation Error */

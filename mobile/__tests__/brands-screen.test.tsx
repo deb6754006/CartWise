@@ -119,7 +119,7 @@ describe('SCR-BRANDS', () => {
   it('load failed: a message and a retry, with no search field', async () => {
     mockGet.mockRejectedValue(new TypeError('Network request failed'));
     await renderScreen();
-    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(screen.getByRole('alert').props.accessibilityLiveRegion).toBe('polite');
     expect(screen.getByText('לא הצלחנו לטעון את המותגים')).toBeTruthy();
     expect(screen.queryByLabelText('חיפוש מותג')).toBeNull();
 
