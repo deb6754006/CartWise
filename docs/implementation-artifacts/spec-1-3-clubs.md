@@ -229,7 +229,7 @@ Status: done
 - `mobile/src/i18n/he.json`, `mobile/openapi.json`, `mobile/src/api/schema.ts` -- מחרוזות ולקוח מיוצר.
 - `mobile/__tests__/{use-clubs,clubs-list,clubs-screen,profile}.test.tsx` -- המטריצה בצד האפליקציה.
 
-**ממצאי הסקירה:** 34 ממצאים. התיקונים כיסו 10 שורות (3 medium ו-7 low; ה-medium הרביעי, `PUT` תקוע, מופיע בשני סוקרים). 6 שורות נדחו ל-deferred. 18 נדחו, והנימוק של כל אחת רשום ב-Review Triage Log.
+**ממצאי הסקירה:** 34 ממצאים. התיקונים כיסו 10 שורות: 4 medium ו-6 low. ה-medium מתחלקים לשתי קבוצות: timeout (3 שורות) ומקביליות (שורה אחת). 6 שורות נדחו ל-deferred. 18 נדחו, והנימוק של כל אחת רשום ב-Review Triage Log.
 
 **בנוסף לממצאים:** הוחלף `Result.tuples()` ב-`catalog/repository.py`, שמסומן deprecated ב-SQLAlchemy 2.1.
 
