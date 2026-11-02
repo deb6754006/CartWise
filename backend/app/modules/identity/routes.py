@@ -10,6 +10,7 @@ from app.core.auth import Subject, auth_required, require_firebase_uid, require_
 from app.core.db import get_session
 from app.modules.identity import service
 from app.modules.identity.schemas import (
+    BrandIdsIn,
     ClubIdsIn,
     ClubIdsOut,
     DeviceRegisterIn,
@@ -17,6 +18,8 @@ from app.modules.identity.schemas import (
     LinkIn,
     LinkOut,
     MeOut,
+    MyBrandOut,
+    MyBrandsOut,
 )
 
 # No prefix: identity owns top-level resources (/v1/devices, /v1/me).
@@ -89,3 +92,23 @@ def put_my_clubs(
 ) -> ClubIdsOut:
     """Replace the whole set of clubs marked by this subject."""
     return ClubIdsOut(club_ids=service.set_clubs(session, _subject_uuid(subject), body.club_ids))
+
+
+@router.get("/me/brands")
+def get_my_brands(
+    subject: Annotated[Subject, Depends(require_subject)],
+    session: Annotated[Session, Depends(get_session)],
+) -> MyBrandsOut:
+    brands = service.brands_for_subject(session, _subject_uuid(subject))
+    return MyBrandsOut(brands=[MyBrandOut(id=b.id, name=b.name) for b in brands])
+
+
+@router.put("/me/brands")
+def put_my_brands(
+    body: BrandIdsIn,
+    subject: Annotated[Subject, Depends(require_subject)],
+    session: Annotated[Session, Depends(get_session)],
+) -> MyBrandsOut:
+    """Replace the whole set of brands this subject wants."""
+    brands = service.set_brands(session, _subject_uuid(subject), body.brand_ids)
+    return MyBrandsOut(brands=[MyBrandOut(id=b.id, name=b.name) for b in brands])

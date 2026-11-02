@@ -96,6 +96,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/brands": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get My Brands */
+        get: operations["get_my_brands_v1_me_brands_get"];
+        /**
+         * Put My Brands
+         * @description Replace the whole set of brands this subject wants.
+         */
+        put: operations["put_my_brands_v1_me_brands_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chains": {
         parameters: {
             query?: never;
@@ -130,10 +151,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/brands/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Brands */
+        get: operations["search_brands_v1_brands_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** BrandIdsIn */
+        BrandIdsIn: {
+            /** Brand Ids */
+            brand_ids: string[];
+        };
+        /** BrandOut */
+        BrandOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** ChainOut */
         ChainOut: {
             /**
@@ -221,6 +274,21 @@ export interface components {
              * Format: uuid
              */
             id: string;
+        };
+        /** MyBrandOut */
+        MyBrandOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /** MyBrandsOut */
+        MyBrandsOut: {
+            /** Brands */
+            brands: components["schemas"]["MyBrandOut"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -421,6 +489,59 @@ export interface operations {
             };
         };
     };
+    get_my_brands_v1_me_brands_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyBrandsOut"];
+                };
+            };
+        };
+    };
+    put_my_brands_v1_me_brands_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrandIdsIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyBrandsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_chains_v1_chains_get: {
         parameters: {
             query?: never;
@@ -457,6 +578,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClubOut"][];
+                };
+            };
+        };
+    };
+    search_brands_v1_brands_search_get: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrandOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

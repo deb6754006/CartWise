@@ -1,8 +1,9 @@
-"""Fictional chains and clubs, so the clubs screen can be seen locally. Refuses to run in prod.
+"""Fictional chains, clubs and brands, to see their screens locally. Refuses to run in prod.
 
 Run from backend/: uv run python -m scripts.seed_dev_catalog
 
-Real chains are chosen in Story 3.1, with the owner's approval: never add their names here.
+Real chains are chosen in Story 3.1, with the owner's approval, and real brands come from the
+official files (Epic 3): never add their names here.
 """
 
 import sys
@@ -14,12 +15,15 @@ from app.core.db import make_engine
 from app.modules.catalog import service as catalog_service
 
 CHAINS = ("רשת א׳", "רשת ב׳", "רשת ג׳")
+BRANDS = ("מותג א׳", "מותג ב׳", "מותג ג׳")
 
 
 def seed(session: Session) -> None:
     """Idempotent: running it again changes nothing."""
     for chain in CHAINS:
         catalog_service.ensure_chain_with_club(session, chain, f"מועדון {chain}")
+    for brand in BRANDS:
+        catalog_service.ensure_brand(session, brand)
     session.commit()
 
 
@@ -34,7 +38,7 @@ def main() -> int:
             seed(session)
     finally:
         engine.dispose()
-    print(f"seed_dev_catalog: {len(CHAINS)} chains and clubs are in place")
+    print(f"seed_dev_catalog: {len(CHAINS)} chains and clubs, {len(BRANDS)} brands are in place")
     return 0
 
 

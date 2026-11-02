@@ -4,35 +4,71 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { t } from '../../src/i18n';
+import { loadBrands } from '../../src/profile/useBrands';
 import { loadClubs } from '../../src/profile/useClubs';
 import { tokens } from '../../src/theme/tokens';
 
 const { colors, spacing, typography } = tokens;
 
-/** SCR-PROFILE. So far, only the clubs row: the other rows come with their own stories. */
-export default function ProfileScreen() {
-  const router = useRouter();
-  // null: not known (still loading for the first time, or the last load failed).
-  const [clubCount, setClubCount] = useState<number | null>(null);
+const countClubs = () => loadClubs().then(({ clubIds }) => clubIds.length);
+const countBrands = () => loadBrands().then((brands) => brands.length);
+
+/**
+ * A count that is refreshed on every return to the screen.
+ * null: not known (still loading for the first time, or the last load failed).
+ */
+function useCountOnFocus(load: () => Promise<number>): number | null {
+  const [count, setCount] = useState<number | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let current = true;
-      loadClubs().then(
-        ({ clubIds }) => {
-          if (current) setClubCount(clubIds.length);
+      load().then(
+        (loaded) => {
+          if (current) setCount(loaded);
         },
         () => {
-          if (current) setClubCount(null);
+          if (current) setCount(null);
         },
       );
       return () => {
         current = false;
       };
-    }, []),
+    }, [load]),
   );
 
-  const clubsLabel = t('profile.clubs');
+  return count;
+}
+
+function CountRow({
+  label,
+  count,
+  onPress,
+}: {
+  label: string;
+  count: number | null;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={count === null ? label : `${label}: ${count}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+    >
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowValue}>
+        {count === null ? t('nav.forwardArrow') : `${count} ${t('nav.forwardArrow')}`}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** SCR-PROFILE. So far, the clubs and brands rows: the others come with their own stories. */
+export default function ProfileScreen() {
+  const router = useRouter();
+  const clubCount = useCountOnFocus(countClubs);
+  const brandCount = useCountOnFocus(countBrands);
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
@@ -41,17 +77,17 @@ export default function ProfileScreen() {
       </Text>
       <Text style={styles.section}>{t('profile.comparison')}</Text>
       <View style={styles.card}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={clubCount === null ? clubsLabel : `${clubsLabel}: ${clubCount}`}
+        <CountRow
+          label={t('profile.clubs')}
+          count={clubCount}
           onPress={() => router.push('/clubs', { dangerouslySingular: true })}
-          style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-        >
-          <Text style={styles.rowLabel}>{clubsLabel}</Text>
-          <Text style={styles.rowValue}>
-            {clubCount === null ? t('nav.forwardArrow') : `${clubCount} ${t('nav.forwardArrow')}`}
-          </Text>
-        </Pressable>
+        />
+        <View style={styles.divider} />
+        <CountRow
+          label={t('profile.brands')}
+          count={brandCount}
+          onPress={() => router.push('/brands', { dangerouslySingular: true })}
+        />
       </View>
     </SafeAreaView>
   );
@@ -81,6 +117,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderHairline,
     borderRadius: tokens.rounded.lg,
+  },
+  divider: {
+    height: 1,
+    marginHorizontal: spacing[4],
+    backgroundColor: colors.borderHairline,
   },
   row: {
     minHeight: tokens.touchTarget,

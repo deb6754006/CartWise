@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.ids import new_id
-from app.modules.identity.models import Device, User, UserClub
+from app.modules.identity.models import Device, User, UserBrand, UserClub
 
 
 def upsert_device(session: Session, install_id_hash: str) -> tuple[uuid.UUID, bool]:
@@ -102,3 +102,48 @@ def move_user_clubs(session: Session, from_subject: uuid.UUID, to_subject: uuid.
         .on_conflict_do_nothing()
     )
     session.execute(delete(UserClub).where(UserClub.subject_id == from_subject))
+
+
+def brand_ids_for_subject(session: Session, subject_id: uuid.UUID) -> list[uuid.UUID]:
+    stmt = (
+        select(UserBrand.brand_id)
+        .where(UserBrand.subject_id == subject_id)
+        .order_by(UserBrand.brand_id)
+    )
+    return list(session.execute(stmt).scalars())
+
+
+def _lock_subject_brands(session: Session, subject_id: uuid.UUID) -> None:
+    """Like _lock_subject_clubs, under a key of its own. A PUT holds only this lock, and link
+    always takes the clubs' locks before the brands', so the two cannot deadlock."""
+    key = f"user_brands:{subject_id}"
+    session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(key, 0))))
+
+
+def replace_user_brands(
+    session: Session, subject_id: uuid.UUID, brand_ids: Collection[uuid.UUID]
+) -> None:
+    _lock_subject_brands(session, subject_id)
+    session.execute(delete(UserBrand).where(UserBrand.subject_id == subject_id))
+    if brand_ids:
+        session.execute(
+            insert(UserBrand),
+            [{"subject_id": subject_id, "brand_id": brand_id} for brand_id in brand_ids],
+        )
+
+
+def move_user_brands(session: Session, from_subject: uuid.UUID, to_subject: uuid.UUID) -> None:
+    """Union from_subject's brands into to_subject's, and empty from_subject's. Idempotent."""
+    _lock_subject_brands(session, from_subject)
+    _lock_subject_brands(session, to_subject)
+    session.execute(
+        insert(UserBrand)
+        .from_select(
+            ["subject_id", "brand_id"],
+            select(literal(to_subject, Uuid), UserBrand.brand_id).where(
+                UserBrand.subject_id == from_subject
+            ),
+        )
+        .on_conflict_do_nothing()
+    )
+    session.execute(delete(UserBrand).where(UserBrand.subject_id == from_subject))

@@ -25,8 +25,9 @@ Settings come from environment variables: `DATABASE_URL`, `ENV`, `LOG_LEVEL` (de
 
 ## Dev catalog data
 
-The migrations add no chains or clubs, so the clubs screen starts empty. To see it locally,
-add fictional chains ("רשת א׳", "רשת ב׳", "רשת ג׳"), each with one club:
+The migrations add no catalog data, so the clubs screen starts empty and brand search finds
+nothing. To see them locally, add fictional chains ("רשת א׳", "רשת ב׳", "רשת ג׳"), each with one
+club, and fictional brands ("מותג א׳", "מותג ב׳", "מותג ג׳"):
 
 ```sh
 cd backend
@@ -34,7 +35,8 @@ uv run python -m scripts.seed_dev_catalog
 ```
 
 It is safe to run again, and it refuses to run with `ENV=prod`. In production, real chains are
-added after Story 3.1, where they are chosen and approved. Until then the app shows its empty state.
+added after Story 3.1, where they are chosen and approved, and real brands come from the official
+files (Epic 3). Until then the app shows its empty states.
 
 ## Checks
 

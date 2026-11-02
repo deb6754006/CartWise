@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint, Uuid, true
+from sqlalchemy import Boolean, ForeignKey, Index, String, Text, UniqueConstraint, Uuid, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -29,3 +29,22 @@ class Club(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
     chain_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("chains.id"))
     name: Mapped[str] = mapped_column(String(200))
+
+
+class Brand(Base):
+    """A product brand. name_norm is set only from catalog.service.normalize_he(name)."""
+
+    __tablename__ = "brands"
+    __table_args__ = (
+        # Trigram, because search matches a substring of name_norm.
+        Index(
+            "ix_brands_name_norm",
+            "name_norm",
+            postgresql_using="gin",
+            postgresql_ops={"name_norm": "gin_trgm_ops"},
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(200), unique=True)
+    name_norm: Mapped[str] = mapped_column(Text)

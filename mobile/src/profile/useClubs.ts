@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { api } from '../api/client';
 import type { components } from '../api/schema';
+import {
+  createSelectionSaver,
+  loadAfterSave,
+  REQUEST_TIMEOUT_MS,
+  useSavedSelection,
+} from './savedSelection';
 
 export type Club = components['schemas']['ClubOut'];
 export type ClubsData = {
@@ -11,28 +17,22 @@ export type ClubsData = {
 };
 export type ClubsStatus = 'loading' | 'error' | 'ready';
 
-export const CLUBS_TIMEOUT_MS = 15_000;
+export const CLUBS_TIMEOUT_MS = REQUEST_TIMEOUT_MS;
 
-/** The API client has no timeout of its own: an unanswered request is aborted, and rejects. */
-async function withTimeout<T>(request: (signal: AbortSignal) => Promise<T>): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CLUBS_TIMEOUT_MS);
-  try {
-    return await request(controller.signal);
-  } finally {
-    clearTimeout(timer);
-  }
+const NOTHING_SELECTED: ReadonlySet<string> = new Set();
+
+function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  return a.size === b.size && [...a].every((id) => b.has(id));
 }
 
-// The save in progress. It outlives the screen (leaving mid-save must not lose the last
-// change), and a load waits for it, so whoever opens next reads what was just saved.
-// It never rejects.
-let activeSave: Promise<void> | null = null;
+const saver = createSelectionSaver<ReadonlySet<string>>(async (clubIds, signal) => {
+  const { data } = await api.PUT('/v1/me/clubs', { body: { club_ids: [...clubIds] }, signal });
+  if (!data) throw new Error('clubs_save_failed');
+}, sameSet);
 
 /** The available clubs and the marked ones. Rejects when either request fails. */
 export async function loadClubs(): Promise<ClubsData> {
-  await activeSave;
-  const [clubs, mine] = await withTimeout((signal) =>
+  const [clubs, mine] = await loadAfterSave(saver, (signal) =>
     Promise.all([api.GET('/v1/clubs', { signal }), api.GET('/v1/me/clubs', { signal })]),
   );
   if (!clubs.data || !mine.data) throw new Error('clubs_load_failed');
@@ -40,36 +40,20 @@ export async function loadClubs(): Promise<ClubsData> {
   return { clubs: clubs.data, clubIds: mine.data.club_ids.filter((id) => known.has(id)) };
 }
 
-function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
-  return a.size === b.size && [...a].every((id) => b.has(id));
-}
-
-/**
- * The clubs screen's state. A toggle shows at once and saves the whole set. At most one
- * request runs at a time; when it ends, the latest state is sent if it differs. If a save
- * fails, the switches go back to the last saved state and saveFailed is set.
- */
+/** The clubs screen's state. See useSavedSelection for how a toggle is saved. */
 export function useClubs() {
   const [status, setStatus] = useState<ClubsStatus>('loading');
   const [clubs, setClubs] = useState<Club[]>([]);
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [saveFailed, setSaveFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
-
-  const desired = useRef<ReadonlySet<string>>(new Set());
-  const saved = useRef<ReadonlySet<string>>(new Set());
-  const saving = useRef(false);
+  const { value: selected, saveFailed, reset, change } = useSavedSelection(saver, NOTHING_SELECTED);
 
   useEffect(() => {
     let current = true;
     loadClubs().then(
       (data) => {
         if (!current) return;
-        const ids = new Set(data.clubIds);
-        desired.current = ids;
-        saved.current = ids;
+        reset(new Set(data.clubIds));
         setClubs(data.clubs);
-        setSelected(ids);
         setStatus('ready');
       },
       () => {
@@ -79,48 +63,22 @@ export function useClubs() {
     return () => {
       current = false;
     };
-  }, [attempt]);
+  }, [attempt, reset]);
 
   const reload = useCallback(() => {
     setStatus('loading');
     setAttempt((n) => n + 1);
   }, []);
 
-  const persist = useCallback(async () => {
-    saving.current = true;
-    try {
-      for (;;) {
-        const sending = desired.current;
-        const { data } = await withTimeout((signal) =>
-          api.PUT('/v1/me/clubs', { body: { club_ids: [...sending] }, signal }),
-        );
-        if (!data) throw new Error('clubs_save_failed');
-        saved.current = sending;
-        if (sameSet(desired.current, sending)) return;
-      }
-    } catch {
-      desired.current = saved.current;
-      setSelected(saved.current);
-      setSaveFailed(true);
-    } finally {
-      saving.current = false;
-    }
-  }, []);
-
   const toggle = useCallback(
     (clubId: string) => {
-      const next = new Set(desired.current);
-      if (!next.delete(clubId)) next.add(clubId);
-      desired.current = next;
-      setSelected(next);
-      setSaveFailed(false);
-      if (saving.current) return; // the running save sends the latest state when it ends
-      const save = persist().finally(() => {
-        if (activeSave === save) activeSave = null;
+      change((current) => {
+        const next = new Set(current);
+        if (!next.delete(clubId)) next.add(clubId);
+        return next;
       });
-      activeSave = save;
     },
-    [persist],
+    [change],
   );
 
   return { status, clubs, selected, saveFailed, toggle, reload };

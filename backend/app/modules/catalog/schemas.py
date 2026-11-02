@@ -15,3 +15,8 @@ class ClubOut(BaseModel):
     name: str
     chain_id: uuid.UUID
     chain_name: str
+
+
+class BrandOut(BaseModel):
+    id: uuid.UUID
+    name: str

@@ -42,3 +42,19 @@ class ClubIdsIn(BaseModel):
 
 class ClubIdsOut(BaseModel):
     club_ids: list[uuid.UUID]
+
+
+class BrandIdsIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    brand_ids: list[uuid.UUID] = Field(max_length=200)
+
+
+class MyBrandOut(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
+class MyBrandsOut(BaseModel):
+    # With names, unlike clubs: the app has no full list of brands to look them up in.
+    brands: list[MyBrandOut]

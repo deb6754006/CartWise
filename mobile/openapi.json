@@ -216,6 +216,67 @@
         }
       }
     },
+    "/v1/me/brands": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Get My Brands",
+        "operationId": "get_my_brands_v1_me_brands_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyBrandsOut"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Put My Brands",
+        "description": "Replace the whole set of brands this subject wants.",
+        "operationId": "put_my_brands_v1_me_brands_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandIdsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyBrandsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/chains": {
       "get": {
         "tags": [
@@ -265,10 +326,95 @@
           }
         }
       }
+    },
+    "/v1/brands/search": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "Search Brands",
+        "operationId": "search_brands_v1_brands_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 100,
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BrandOut"
+                  },
+                  "title": "Response Search Brands V1 Brands Search Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "BrandIdsIn": {
+        "properties": {
+          "brand_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Brand Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "brand_ids"
+        ],
+        "title": "BrandIdsIn"
+      },
+      "BrandOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "BrandOut"
+      },
       "ChainOut": {
         "properties": {
           "id": {
@@ -462,6 +608,41 @@
           "id"
         ],
         "title": "MeOut"
+      },
+      "MyBrandOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "MyBrandOut"
+      },
+      "MyBrandsOut": {
+        "properties": {
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/MyBrandOut"
+            },
+            "type": "array",
+            "title": "Brands"
+          }
+        },
+        "type": "object",
+        "required": [
+          "brands"
+        ],
+        "title": "MyBrandsOut"
       },
       "ValidationError": {
         "properties": {

@@ -57,3 +57,14 @@ class UserClub(Base):
     club_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("clubs.id", ondelete="CASCADE"), primary_key=True, index=True
     )
+
+
+class UserBrand(Base):
+    """A brand a subject wants. subject_id is a user or a device, so it has no FK (see UserClub)."""
+
+    __tablename__ = "user_brands"
+
+    subject_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    brand_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("brands.id", ondelete="CASCADE"), primary_key=True, index=True
+    )

@@ -1,47 +1,19 @@
-import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { t } from '../i18n';
 import { useClubs } from '../profile/useClubs';
 import { tokens } from '../theme/tokens';
+import { CardsSkeleton } from './CardsSkeleton';
 
 const { colors, spacing, typography } = tokens;
-
-const SKELETON_CARDS = 3;
-/** EXPERIENCE §6: after this long, loading also says "one moment". */
-const SLOW_LOADING_MS = 3000;
-
-function ClubsSkeleton() {
-  const [slow, setSlow] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setSlow(true), SLOW_LOADING_MS);
-    return () => clearTimeout(timer);
-  }, []);
-
-  return (
-    <View
-      testID="clubs-skeleton"
-      accessible
-      accessibilityRole="progressbar"
-      accessibilityLabel={t('clubs.loading')}
-      style={styles.list}
-    >
-      {Array.from({ length: SKELETON_CARDS }, (_, i) => (
-        <View key={i} style={styles.card}>
-          <View style={styles.skeletonName} />
-        </View>
-      ))}
-      {slow ? <Text style={styles.message}>{t('clubs.slow')}</Text> : null}
-    </View>
-  );
-}
 
 /** A switch for each club, with its states. No navigation: Onboarding uses it as well. */
 export function ClubsList() {
   const { status, clubs, selected, saveFailed, toggle, reload } = useClubs();
 
-  if (status === 'loading') return <ClubsSkeleton />;
+  if (status === 'loading') {
+    return <CardsSkeleton label={t('clubs.loading')} testID="clubs-skeleton" />;
+  }
 
   if (status === 'error') {
     return (
@@ -115,12 +87,6 @@ const styles = StyleSheet.create({
     ...typography.heading,
     flex: 1,
     color: colors.inkPrimary,
-  },
-  skeletonName: {
-    width: '50%',
-    height: spacing[4],
-    borderRadius: tokens.rounded.sm,
-    backgroundColor: colors.surfaceSunken,
   },
   message: {
     ...typography.body,

@@ -3,12 +3,12 @@
 import uuid
 from collections.abc import Collection, Sequence
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.ids import new_id
-from app.modules.catalog.models import Chain, Club
+from app.modules.catalog.models import Brand, Chain, Club
 
 
 def list_chains(session: Session) -> Sequence[tuple[uuid.UUID, str]]:
@@ -52,3 +52,42 @@ def ensure_club(session: Session, chain_id: uuid.UUID, name: str) -> uuid.UUID:
     return session.execute(
         select(Club.id).where(Club.chain_id == chain_id, Club.name == name)
     ).scalar_one()
+
+
+def search_brands(session: Session, normalized: str, limit: int) -> Sequence[tuple[uuid.UUID, str]]:
+    """Brands whose name_norm contains normalized, as literal text. Those that start with it
+    come first, and then by name."""
+    escaped = normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    stmt = (
+        select(Brand.id, Brand.name)
+        .where(Brand.name_norm.like(f"%{escaped}%", escape="\\"))
+        .order_by(
+            case((Brand.name_norm.like(f"{escaped}%", escape="\\"), 0), else_=1),
+            Brand.name,
+            Brand.id,
+        )
+        .limit(limit)
+    )
+    return [(row[0], row[1]) for row in session.execute(stmt).all()]
+
+
+def brands_by_ids(session: Session, ids: Collection[uuid.UUID]) -> Sequence[tuple[uuid.UUID, str]]:
+    if not ids:
+        return []
+    stmt = select(Brand.id, Brand.name).where(Brand.id.in_(ids)).order_by(Brand.name, Brand.id)
+    return [(row[0], row[1]) for row in session.execute(stmt).all()]
+
+
+def existing_brand_ids(session: Session, ids: Collection[uuid.UUID]) -> set[uuid.UUID]:
+    if not ids:
+        return set()
+    return set(session.execute(select(Brand.id).where(Brand.id.in_(ids))).scalars())
+
+
+def ensure_brand(session: Session, name: str, name_norm: str) -> uuid.UUID:
+    session.execute(
+        insert(Brand)
+        .values(id=new_id(), name=name, name_norm=name_norm)
+        .on_conflict_do_nothing(index_elements=[Brand.name])
+    )
+    return session.execute(select(Brand.id).where(Brand.name == name)).scalar_one()

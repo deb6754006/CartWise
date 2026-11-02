@@ -15,6 +15,7 @@ from app.modules.identity import repository
 
 DEVICE_ALREADY_LINKED_HE = "המכשיר הזה כבר מחובר לחשבון אחר"
 UNKNOWN_CLUB_HE = "אחד המועדונים שנבחרו לא קיים"
+UNKNOWN_BRAND_HE = "אחד המותגים שנבחרו לא קיים"
 
 # A transfer hook moves a guest's data (lists, prefs, quota...) from a device to a user.
 # Owning modules register one through register_transfer_hook (AD-2): identity never touches
@@ -82,9 +83,9 @@ def link(session: Session, firebase_uid: str, device_token: str | None) -> tuple
     - Device already linked to this user: hooks do not run again.
     - Device linked to another user: 409 device_already_linked.
     - Device not linked yet: linked, then every transfer hook runs, in the same transaction.
-    Whenever the device belongs to this user, clubs marked on it move to the user. That is a
-    direct call, not a hook: user_clubs is identity's own table, and a repeat link (after
-    signing out and marking clubs as a guest) has to move them too.
+    Whenever the device belongs to this user, clubs and brands marked on it move to the user.
+    That is a direct call, not a hook: both tables are identity's own, and a repeat link (after
+    signing out and marking more as a guest) has to move them too.
     An invalid device token, or a deleted user, is 401 invalid_token. Nothing is committed
     on any error.
     """
@@ -103,6 +104,7 @@ def link(session: Session, firebase_uid: str, device_token: str | None) -> tuple
             if first_link:
                 repository.set_device_user(session, device, user.id)
             repository.move_user_clubs(session, device_id, user.id)
+            repository.move_user_brands(session, device_id, user.id)
             if first_link:
                 for hook in list(_TRANSFER_HOOKS):
                     hook(session, device_id, user.id)
@@ -138,3 +140,36 @@ def set_clubs(
         session.rollback()
         raise
     return sorted(wanted)
+
+
+def brand_ids_for_subject(session: Session, subject_id: uuid.UUID) -> list[uuid.UUID]:
+    """The brands this subject (user or device) wants. Epics 2 and 5 read them here."""
+    return repository.brand_ids_for_subject(session, subject_id)
+
+
+def brands_for_subject(session: Session, subject_id: uuid.UUID) -> list[catalog_service.BrandRef]:
+    """The brands this subject wants, with their names, sorted by name."""
+    return catalog_service.brands_by_ids(session, brand_ids_for_subject(session, subject_id))
+
+
+def set_brands(
+    session: Session, subject_id: uuid.UUID, brand_ids: Collection[uuid.UUID]
+) -> list[catalog_service.BrandRef]:
+    """Replace the subject's brands. An unknown id (422 unknown_brand) changes nothing."""
+    wanted = set(brand_ids)
+    try:
+        unknown = wanted - catalog_service.existing_brand_ids(session, wanted)
+        if unknown:
+            raise AppError(
+                "unknown_brand",
+                UNKNOWN_BRAND_HE,
+                status=422,
+                details={"brand_ids": sorted(str(brand_id) for brand_id in unknown)},
+            )
+        repository.replace_user_brands(session, subject_id, wanted)
+        brands = catalog_service.brands_by_ids(session, wanted)
+        session.commit()
+    except BaseException:
+        session.rollback()
+        raise
+    return brands
