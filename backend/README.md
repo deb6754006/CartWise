@@ -23,6 +23,19 @@ uv run uvicorn app.main:app --reload
 
 Settings come from environment variables: `DATABASE_URL`, `ENV`, `LOG_LEVEL` (defaults are for dev).
 
+## Dev catalog data
+
+The migrations add no chains or clubs, so the clubs screen starts empty. To see it locally,
+add fictional chains ("רשת א׳", "רשת ב׳", "רשת ג׳"), each with one club:
+
+```sh
+cd backend
+uv run python -m scripts.seed_dev_catalog
+```
+
+It is safe to run again, and it refuses to run with `ENV=prod`. In production, real chains are
+added after Story 3.1, where they are chosen and approved. Until then the app shows its empty state.
+
 ## Checks
 
 ```sh

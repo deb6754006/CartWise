@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DeviceRegisterIn(BaseModel):
@@ -31,3 +31,14 @@ class LinkIn(BaseModel):
 
 class LinkOut(BaseModel):
     user_id: uuid.UUID
+
+
+class ClubIdsIn(BaseModel):
+    # extra="forbid": a member number (or anything else) is rejected, not silently dropped.
+    model_config = ConfigDict(extra="forbid")
+
+    club_ids: list[uuid.UUID] = Field(max_length=200)
+
+
+class ClubIdsOut(BaseModel):
+    club_ids: list[uuid.UUID]

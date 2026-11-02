@@ -10,6 +10,8 @@ from app.core.auth import Subject, auth_required, require_firebase_uid, require_
 from app.core.db import get_session
 from app.modules.identity import service
 from app.modules.identity.schemas import (
+    ClubIdsIn,
+    ClubIdsOut,
     DeviceRegisterIn,
     DeviceRegisterOut,
     LinkIn,
@@ -63,3 +65,27 @@ def me(subject: Annotated[Subject, Depends(require_subject)]) -> MeOut:
     if subject.kind == "anonymous" or subject.id is None:
         raise auth_required()
     return MeOut(kind=subject.kind, id=uuid.UUID(subject.id))
+
+
+def _subject_uuid(subject: Subject) -> uuid.UUID:
+    if subject.id is None:
+        raise auth_required()
+    return uuid.UUID(subject.id)
+
+
+@router.get("/me/clubs")
+def get_my_clubs(
+    subject: Annotated[Subject, Depends(require_subject)],
+    session: Annotated[Session, Depends(get_session)],
+) -> ClubIdsOut:
+    return ClubIdsOut(club_ids=service.club_ids_for_subject(session, _subject_uuid(subject)))
+
+
+@router.put("/me/clubs")
+def put_my_clubs(
+    body: ClubIdsIn,
+    subject: Annotated[Subject, Depends(require_subject)],
+    session: Annotated[Session, Depends(get_session)],
+) -> ClubIdsOut:
+    """Replace the whole set of clubs marked by this subject."""
+    return ClubIdsOut(club_ids=service.set_clubs(session, _subject_uuid(subject), body.club_ids))

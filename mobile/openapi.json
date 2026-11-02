@@ -154,10 +154,206 @@
           }
         }
       }
+    },
+    "/v1/me/clubs": {
+      "get": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Get My Clubs",
+        "operationId": "get_my_clubs_v1_me_clubs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubIdsOut"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Put My Clubs",
+        "description": "Replace the whole set of clubs marked by this subject.",
+        "operationId": "put_my_clubs_v1_me_clubs_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClubIdsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClubIdsOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/chains": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "List Chains",
+        "operationId": "list_chains_v1_chains_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChainOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Chains V1 Chains Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/clubs": {
+      "get": {
+        "tags": [
+          "catalog"
+        ],
+        "summary": "List Clubs",
+        "operationId": "list_clubs_v1_clubs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClubOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Clubs V1 Clubs Get"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ChainOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ChainOut"
+      },
+      "ClubIdsIn": {
+        "properties": {
+          "club_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "title": "Club Ids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "club_ids"
+        ],
+        "title": "ClubIdsIn"
+      },
+      "ClubIdsOut": {
+        "properties": {
+          "club_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Club Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "club_ids"
+        ],
+        "title": "ClubIdsOut"
+      },
+      "ClubOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "chain_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Chain Id"
+          },
+          "chain_name": {
+            "type": "string",
+            "title": "Chain Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "chain_id",
+          "chain_name"
+        ],
+        "title": "ClubOut"
+      },
       "DeviceRegisterIn": {
         "properties": {
           "install_id": {

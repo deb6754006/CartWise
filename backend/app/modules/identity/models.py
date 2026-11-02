@@ -43,3 +43,17 @@ class Device(Base):
     attestation_ok_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class UserClub(Base):
+    """A club a subject marked as a member of. Never a member number or any other identifier.
+
+    subject_id is a user or a device, so it has no FK: UUIDv7 is unique across the two tables.
+    """
+
+    __tablename__ = "user_clubs"
+
+    subject_id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    club_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("clubs.id", ondelete="CASCADE"), primary_key=True, index=True
+    )

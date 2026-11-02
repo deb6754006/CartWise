@@ -1,13 +1,14 @@
 """identity: data access. Only this module's repository touches its tables."""
 
 import uuid
+from collections.abc import Collection
 
-from sqlalchemy import Boolean, func, literal_column, select
+from sqlalchemy import Boolean, Uuid, delete, func, literal, literal_column, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.ids import new_id
-from app.modules.identity.models import Device, User
+from app.modules.identity.models import Device, User, UserClub
 
 
 def upsert_device(session: Session, install_id_hash: str) -> tuple[uuid.UUID, bool]:
@@ -59,3 +60,45 @@ def lock_device(session: Session, device_id: uuid.UUID) -> Device | None:
 def set_device_user(session: Session, device: Device, user_id: uuid.UUID) -> None:
     device.user_id = user_id
     session.flush()
+
+
+def club_ids_for_subject(session: Session, subject_id: uuid.UUID) -> list[uuid.UUID]:
+    stmt = (
+        select(UserClub.club_id).where(UserClub.subject_id == subject_id).order_by(UserClub.club_id)
+    )
+    return list(session.execute(stmt).scalars())
+
+
+def _lock_subject_clubs(session: Session, subject_id: uuid.UUID) -> None:
+    """Serialize writers of one subject's clubs until the transaction ends. Without this, two
+    concurrent replacements (or a replacement and a transfer) could leave a mix of both."""
+    session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(str(subject_id), 0))))
+
+
+def replace_user_clubs(
+    session: Session, subject_id: uuid.UUID, club_ids: Collection[uuid.UUID]
+) -> None:
+    _lock_subject_clubs(session, subject_id)
+    session.execute(delete(UserClub).where(UserClub.subject_id == subject_id))
+    if club_ids:
+        session.execute(
+            insert(UserClub),
+            [{"subject_id": subject_id, "club_id": club_id} for club_id in club_ids],
+        )
+
+
+def move_user_clubs(session: Session, from_subject: uuid.UUID, to_subject: uuid.UUID) -> None:
+    """Union from_subject's clubs into to_subject's, and empty from_subject's. Idempotent."""
+    _lock_subject_clubs(session, from_subject)
+    _lock_subject_clubs(session, to_subject)
+    session.execute(
+        insert(UserClub)
+        .from_select(
+            ["subject_id", "club_id"],
+            select(literal(to_subject, Uuid), UserClub.club_id).where(
+                UserClub.subject_id == from_subject
+            ),
+        )
+        .on_conflict_do_nothing()
+    )
+    session.execute(delete(UserClub).where(UserClub.subject_id == from_subject))
