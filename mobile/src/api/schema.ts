@@ -189,6 +189,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/geo/geocode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Geocode
+         * @description The coordinates of an address in Israel. The address is not kept or logged.
+         */
+        get: operations["geocode_v1_geo_geocode_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -264,6 +284,13 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
+        };
+        /** GeocodeOut */
+        GeocodeOut: {
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -710,6 +737,51 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    geocode_v1_geo_geocode_get: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeocodeOut"];
+                };
+            };
+            /** @description address_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description geocoding_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

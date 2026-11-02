@@ -61,10 +61,21 @@ describe('app.config.ts', () => {
       'expo-status-bar',
       'expo-asset',
       'expo-secure-store',
+      'expo-location',
     ]);
     expect(c.plugins).toContainEqual(['expo-localization', { supportsRTL: true, forcesRTL: true }]);
     expect(c.android?.package).toBe('app.cartwise');
     expect(c.platforms).toEqual(['android']);
+  });
+
+  it('asks for approximate location only, and explains it in Hebrew', () => {
+    const c = build();
+    expect(c.android?.permissions).toEqual(['android.permission.ACCESS_COARSE_LOCATION']);
+    expect(c.android?.blockedPermissions).toEqual(['android.permission.ACCESS_FINE_LOCATION']);
+    const location = (c.plugins ?? []).find((p) => Array.isArray(p) && p[0] === 'expo-location');
+    const options = (location as [string, Record<string, unknown>])[1];
+    expect(options.locationWhenInUsePermission).toMatch(/[א-ת]/);
+    expect(options).not.toHaveProperty('isAndroidBackgroundLocationEnabled');
   });
 
   it('with google-services.json: the web (type 3) client id, plugins and the file', () => {

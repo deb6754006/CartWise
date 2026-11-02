@@ -18,6 +18,7 @@ DEV_DEVICE_TOKEN_SECRET = "cartwise-dev-only-device-token-signing-key"  # noqa: 
 DEFAULT_FIREBASE_JWKS_URL = (
     "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"
 )
+DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
 
 class Settings(BaseSettings):
@@ -33,6 +34,8 @@ class Settings(BaseSettings):
     # /v1/auth/link and on Firebase tokens), while guests with device tokens keep working.
     FIREBASE_PROJECT_ID: str = ""
     FIREBASE_JWKS_URL: str = DEFAULT_FIREBASE_JWKS_URL
+    # Where an address entered in the app is located. Free, with no key and no account.
+    NOMINATIM_URL: str = DEFAULT_NOMINATIM_URL
 
     @model_validator(mode="after")
     def _no_dev_db_in_prod(self) -> Self:

@@ -434,6 +434,57 @@
           }
         }
       }
+    },
+    "/v1/geo/geocode": {
+      "get": {
+        "tags": [
+          "geo"
+        ],
+        "summary": "Geocode",
+        "description": "The coordinates of an address in Israel. The address is not kept or logged.",
+        "operationId": "geocode_v1_geo_geocode_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 200,
+              "title": "Q"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GeocodeOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "address_not_found"
+          },
+          "503": {
+            "description": "geocoding_unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -600,6 +651,24 @@
           "expires_at"
         ],
         "title": "DeviceRegisterOut"
+      },
+      "GeocodeOut": {
+        "properties": {
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lat",
+          "lng"
+        ],
+        "title": "GeocodeOut"
       },
       "HTTPValidationError": {
         "properties": {

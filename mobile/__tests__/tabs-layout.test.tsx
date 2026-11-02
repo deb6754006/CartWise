@@ -1,4 +1,5 @@
 import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
+import { Text } from 'react-native';
 
 import TabsLayout from '../app/(tabs)/_layout';
 import HomeScreen from '../app/(tabs)/index';
@@ -20,12 +21,18 @@ jest.mock('../src/identity/session', () => ({
   signInWithGoogle: () => mockSignIn(),
 }));
 
+const mockIsOnboardingDone = jest.fn<Promise<boolean>, []>();
+jest.mock('../src/onboarding/state', () => ({
+  isOnboardingDone: () => mockIsOnboardingDone(),
+}));
+
 const SESSION = { userId: 'u1', firstName: 'דנה' };
 const SHEET_TITLE = 'כדי לסרוק ולעקוב אחרי ההוצאות, צריך להתחבר';
 
-function renderTabs() {
-  return renderRouter(
+async function renderTabs() {
+  const router = renderRouter(
     {
+      onboarding: () => <Text>onboarding</Text>,
       '(tabs)/_layout': TabsLayout,
       '(tabs)/index': HomeScreen,
       '(tabs)/lists': ListsScreen,
@@ -35,11 +42,13 @@ function renderTabs() {
     },
     { initialUrl: '/' },
   );
+  await act(async () => {}); // the Onboarding flag
+  return router;
 }
 
 describe('tabs layout', () => {
-  it('renders 5 tabs in order, each with a Hebrew accessibility label', () => {
-    renderTabs();
+  it('renders 5 tabs in order, each with a Hebrew accessibility label', async () => {
+    await renderTabs();
 
     const tabs = screen.getAllByRole('tab');
     expect(tabs.map((tab) => tab.props.accessibilityLabel)).toEqual([
@@ -60,6 +69,8 @@ describe('tabs layout', () => {
   });
 
   beforeEach(() => {
+    mockIsOnboardingDone.mockReset();
+    mockIsOnboardingDone.mockResolvedValue(true);
     mockSession.current = SESSION;
     mockStored.signedIn = null;
     mockSignIn.mockReset();
@@ -68,7 +79,7 @@ describe('tabs layout', () => {
   it('session not read yet but signed in: scan opens directly, no sheet', async () => {
     mockSession.current = undefined;
     mockStored.signedIn = true;
-    const router = renderTabs();
+    const router = await renderTabs();
     await act(async () => fireEvent.press(screen.getByRole('tab', { name: 'סריקה' })));
 
     expect(router.getPathname()).toBe('/scan');
@@ -77,8 +88,8 @@ describe('tabs layout', () => {
     expect(mockSignIn).not.toHaveBeenCalled();
   });
 
-  it('switches to the scan screen when a signed-in user presses the scan tab', () => {
-    const router = renderTabs();
+  it('switches to the scan screen when a signed-in user presses the scan tab', async () => {
+    const router = await renderTabs();
 
     fireEvent.press(screen.getByRole('tab', { name: 'סריקה' }));
 
@@ -88,6 +99,35 @@ describe('tabs layout', () => {
     expect(scanTab).toBeSelected();
     expect(scanTab).toHaveStyle({ borderWidth: 3 });
     expect(screen.getByRole('tab', { name: 'בית' })).not.toBeSelected();
+  });
+
+  describe('onboarding', () => {
+    it('first launch: goes to onboarding without showing the tabs first', async () => {
+      mockIsOnboardingDone.mockResolvedValue(false);
+      const router = renderRouter(
+        {
+          onboarding: () => <Text>onboarding</Text>,
+          '(tabs)/_layout': TabsLayout,
+          '(tabs)/index': HomeScreen,
+        },
+        { initialUrl: '/' },
+      );
+      // Before the flag is read: neither the tabs nor onboarding.
+      expect(screen.queryAllByRole('tab')).toHaveLength(0);
+      expect(screen.queryByText('מסך הבית')).toBeNull();
+      await act(async () => {});
+
+      expect(router.getPathname()).toBe('/onboarding');
+      expect(screen.getByText('onboarding')).toBeTruthy();
+      expect(screen.queryAllByRole('tab')).toHaveLength(0);
+    });
+
+    it('returning: the tabs, with no onboarding', async () => {
+      const router = await renderTabs();
+      expect(router.getPathname()).toBe('/');
+      expect(screen.getAllByRole('tab')).toHaveLength(5);
+      expect(screen.queryByText('onboarding')).toBeNull();
+    });
   });
 
   describe('guest', () => {
@@ -103,7 +143,7 @@ describe('tabs layout', () => {
     };
 
     it('pressing scan opens SHEET-SIGNIN instead of the scan screen', async () => {
-      const router = renderTabs();
+      const router = await renderTabs();
       await pressScan();
 
       expect(screen.getByText(SHEET_TITLE)).toBeTruthy();
@@ -112,7 +152,7 @@ describe('tabs layout', () => {
     });
 
     it('"not now" closes the sheet and stays where it was', async () => {
-      const router = renderTabs();
+      const router = await renderTabs();
       await pressScan();
       await pressButton('לא עכשיו');
 
@@ -126,7 +166,7 @@ describe('tabs layout', () => {
         mockSession.current = SESSION;
         return { status: 'success', session: SESSION };
       });
-      const router = renderTabs();
+      const router = await renderTabs();
       await pressScan();
       await pressButton('המשך עם Google');
 
@@ -137,7 +177,7 @@ describe('tabs layout', () => {
 
     it('cancelling in Google stays where it was', async () => {
       mockSignIn.mockResolvedValue({ status: 'cancelled' });
-      const router = renderTabs();
+      const router = await renderTabs();
       await pressScan();
       await pressButton('המשך עם Google');
 

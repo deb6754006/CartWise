@@ -1,12 +1,14 @@
-import { Tabs, useRouter } from 'expo-router';
+import { Redirect, Tabs, useRouter } from 'expo-router';
 import { PlatformPressable } from 'expo-router/react-navigation';
 import type { BottomTabBarButtonProps } from 'expo-router/tabs';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { SignInHost } from '../../src/components/SignInHost';
 import { t } from '../../src/i18n';
 import { requireSignIn } from '../../src/identity/requireSignIn';
 import { getCachedSession } from '../../src/identity/session';
+import { isOnboardingDone } from '../../src/onboarding/state';
 import { tokens } from '../../src/theme/tokens';
 
 const { tabBar } = tokens.components;
@@ -53,6 +55,22 @@ function ScanTabButton({ style: _style, onPress, ...props }: BottomTabBarButtonP
 }
 
 export default function TabsLayout() {
+  // null: not read yet. The read is bounded (see isOnboardingDone), so this cannot stay blank.
+  const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    isOnboardingDone().then((done) => {
+      if (current) setOnboardingDone(done);
+    });
+    return () => {
+      current = false;
+    };
+  }, []);
+
+  if (onboardingDone === null) return <View style={styles.waiting} />;
+  if (!onboardingDone) return <Redirect href="/onboarding" />;
+
   return (
     <>
       <Tabs
@@ -93,6 +111,10 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
+  waiting: {
+    flex: 1,
+    backgroundColor: tokens.colors.surfaceBase,
+  },
   scanSlot: {
     flex: 1,
     alignItems: 'center',

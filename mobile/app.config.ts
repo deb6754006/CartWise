@@ -51,6 +51,9 @@ export default ({ config, projectRoot }: ConfigContext): ExpoConfig => {
         monochromeImage: './assets/android-icon-monochrome.png',
       },
       predictiveBackGestureEnabled: false,
+      // Approximate location only. The library declares the fine one, so it is removed here.
+      permissions: ['android.permission.ACCESS_COARSE_LOCATION'],
+      blockedPermissions: ['android.permission.ACCESS_FINE_LOCATION'],
       ...(hasGoogleServices ? { googleServicesFile: GOOGLE_SERVICES_FILE } : {}),
     },
     plugins: [
@@ -69,6 +72,14 @@ export default ({ config, projectRoot }: ConfigContext): ExpoConfig => {
       'expo-status-bar',
       'expo-asset',
       'expo-secure-store',
+      [
+        'expo-location',
+        {
+          locationWhenInUsePermission: 'נשתמש במיקום שלכם רק בזמן ההשוואה, כדי למצוא חנויות קרובות',
+          locationAlwaysAndWhenInUsePermission: false,
+          locationAlwaysPermission: false,
+        },
+      ],
       ...(hasGoogleServices
         ? [
             '@react-native-firebase/app',
