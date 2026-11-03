@@ -59,15 +59,21 @@ class Geocoder(Protocol):
 
 
 class RequestSpacer:
-    """Spaces calls MIN_INTERVAL_SECONDS apart, each one waiting for its own turn."""
+    """Spaces calls MIN_INTERVAL_SECONDS apart, each one waiting for its own turn.
+
+    A call whose turn is more than max_wait seconds away fails at once; max_wait None waits
+    however long it takes (the worker, where no request is waiting for an answer).
+    """
 
     def __init__(
         self,
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
+        max_wait: float | None = MAX_WAIT_SECONDS,
     ) -> None:
         self._clock = clock
         self._sleep = sleep
+        self._max_wait = max_wait
         self._next_free = 0.0
         self._lock = threading.Lock()
 
@@ -77,7 +83,7 @@ class RequestSpacer:
             now = self._clock()
             turn = max(now, self._next_free)
             wait = turn - now
-            if wait > MAX_WAIT_SECONDS:
+            if self._max_wait is not None and wait > self._max_wait:
                 return False
             self._next_free = turn + MIN_INTERVAL_SECONDS
         if wait > 0:
@@ -154,6 +160,22 @@ def _geocoder_for(url: str) -> NominatimGeocoder:
     return NominatimGeocoder(url)
 
 
+def default_geocoder(settings: Settings) -> Geocoder:
+    """The configured geocoder, outside FastAPI (for the worker)."""
+    return _geocoder_for(settings.NOMINATIM_URL)
+
+
+@lru_cache(maxsize=4)
+def _worker_geocoder_for(url: str) -> NominatimGeocoder:
+    # Its own spacer, which waits with no limit: the worker's chain jobs run in parallel threads.
+    return NominatimGeocoder(url, spacer=RequestSpacer(max_wait=None))
+
+
+def worker_geocoder(settings: Settings) -> Geocoder:
+    """The configured geocoder for the worker: requests wait their turn instead of failing."""
+    return _worker_geocoder_for(settings.NOMINATIM_URL)
+
+
 def get_geocoder(settings: Annotated[Settings, Depends(get_settings)]) -> Geocoder:
     """FastAPI dependency; tests override it with a fake geocoder."""
-    return _geocoder_for(settings.NOMINATIM_URL)
+    return default_geocoder(settings)

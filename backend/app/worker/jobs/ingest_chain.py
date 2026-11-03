@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.db import SessionLocal
 from app.core.logging import configure_logging
+from app.modules.geo.service import Geocoder, worker_geocoder
 from app.modules.ingestion.adapters import CHAIN_KEYS, ChainAdapter, build_adapters
-from app.modules.ingestion.service import RunSummary, ingest_chain
+from app.modules.ingestion.service import RunSummary, handlers_with_geocoder, ingest_chain
 
 logger = logging.getLogger("app.worker.ingest_chain")
 
@@ -22,18 +23,24 @@ def run(
     chain_key: str,
     session_factory: Callable[[], Session] = SessionLocal,
     adapters: Callable[[], dict[str, ChainAdapter]] | None = None,
+    geocoder: Geocoder | None = None,
 ) -> RunSummary | None:
     """One run. Never raises, so the scheduler keeps going: a crash is logged and gives None.
 
     The adapters are built anew for each run, so each one starts with a fresh cookie jar.
+    Stores are geocoded with geocoder, by default the worker's Nominatim geocoder (no wait limit).
     """
     try:
-        built = adapters() if adapters is not None else build_adapters(get_settings())
+        settings = get_settings()
+        built = adapters() if adapters is not None else build_adapters(settings)
         adapter = built.get(chain_key)
         if adapter is None:
             logger.error("ingest_chain_unknown", extra={"chain": chain_key})
             return None
-        return ingest_chain(session_factory, adapter)
+        handlers = handlers_with_geocoder(
+            geocoder if geocoder is not None else worker_geocoder(settings)
+        )
+        return ingest_chain(session_factory, adapter, handlers)
     except Exception as exc:
         logger.error(
             "ingest_chain_crashed", extra={"chain": chain_key, "error": type(exc).__name__}

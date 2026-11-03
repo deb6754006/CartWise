@@ -51,6 +51,21 @@ docker compose exec worker python -m app.worker.jobs.ingest_chain shufersal   # 
 
 שגיאת תעודה (certificate) בריצה כזו, ברשת מסוננת, נובעת מהסינון. היא נרשמת בשורת הריצה, ולא מבטלים בגללה את בדיקת ה-TLS.
 
+#### סניפים ומיקומים
+
+קובץ ה-Stores של כל רשת יוצר ומעדכן את הסניפים בטבלה `stores`. לסניף פיזי בלי מיקום, או שהכתובת שלו השתנתה, ה-worker מחפש מיקום ב-Nominatim (`NOMINATIM_URL`), לפי "כתובת, שם יישוב". לכל היותר 1,000 בקשות לקובץ, בקצב של בקשה אחת בשנייה. לכן בריצה הראשונה של רשת גדולה, ה-geocoding לבדו עשוי להימשך עד כ-17 דקות. אם Nominatim לא זמין, הקובץ מפסיק לשלוח בקשות, והסניפים שנשארו מנוסים בריצה הבאה. סניף אינטרנטי (`StoreType=2`) לא מקבל מיקום, ולא נכנס להשוואות.
+
+סניף שלא נמצא לו מיקום מקבל `status='needs_location'`, ולא נכנס להשוואות. כתובת שלא נמצאה לא נבדקת שוב במשך 24 שעות. אפשר לראות את הסניפים האלה ולהזין להם מיקום ידני. מיקום ידני לא נדרס בקליטות הבאות, גם אם הכתובת משתנה:
+
+```bash
+docker compose exec api python -m scripts.store_locations list                        # מזהה, רשת, קוד סניף, שם, כתובת, קוד יישוב
+docker compose exec api python -m scripts.store_locations set <store_id> 31.7767 35.2345   # lat lng
+```
+
+שמות היישובים נלקחים מקוד היישוב של הלמ"ס, לפי `backend/app/modules/catalog/data/settlements.csv`. המקור: המאגר "יישובים בישראל" של רשות האוכלוסין וההגירה, ב-data.gov.il (`resource_id=5c78e9fa-c2e2-4771-93ff-7f400a12f7ba`), ברישיון Other (Open).
+
+המיקומים שנמצאים ב-geocoding נשמרים בטבלה, ומקורם ב-OpenStreetMap, דרך Nominatim: © OpenStreetMap contributors, ODbL.
+
 ## רשת עם סינון TLS (למשל NetFree)
 
 אם בניית ה-image נכשלת בשגיאת תעודה (certificate) בשלב `uv sync`, צריך להגדיר את משתנה הסביבה `CARTWISE_EXTRA_CA`, עם הנתיב לקובץ התעודות **המלא** של הרשת. התעודה משמשת רק בזמן הבנייה, ולא נכנסת ל-image.

@@ -1,13 +1,20 @@
 """catalog: business logic. Other modules use catalog data only through this file."""
 
+import csv
+import math
 import unicodedata
 import uuid
 from collections.abc import Collection
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from functools import cache
+from pathlib import Path
+from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.modules.catalog import repository
+from app.modules.catalog.models import LocationSource, StoreStatus
 
 # Search needs this many characters, after normalizing.
 MIN_BRAND_SEARCH_LENGTH = 2
@@ -37,6 +44,54 @@ class ClubRef:
 class BrandRef:
     id: uuid.UUID
     name: str
+
+
+# StoreType of an online store, in the chains' Stores files. Any other type is a physical store.
+ONLINE_STORE_TYPE = 2
+
+# From the Population Authority's "settlements in Israel" dataset on data.gov.il (open licence):
+# code,name for each CBS settlement code. See deploy/README.md.
+SETTLEMENTS_CSV = Path(__file__).resolve().parent / "data" / "settlements.csv"
+
+
+@dataclass(frozen=True, slots=True)
+class StoreRecord:
+    """One store as read from a chain's Stores file."""
+
+    gov_store_code: str
+    sub_chain_code: str | None
+    name: str
+    address: str
+    city_code: str | None
+    zip_code: str | None
+    store_type: int | None
+
+    @property
+    def online(self) -> bool:
+        return self.store_type == ONLINE_STORE_TYPE
+
+
+@dataclass(frozen=True, slots=True)
+class StoreState:
+    """What decides whether a store is geocoded."""
+
+    id: uuid.UUID
+    status: StoreStatus
+    has_location: bool
+    location_source: LocationSource | None
+    geocoded_query: str | None
+    geocode_attempted_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class StoreRef:
+    id: uuid.UUID
+    chain_id: uuid.UUID
+    chain_name: str
+    gov_store_code: str
+    name: str
+    address: str
+    city_code: str | None
 
 
 def _is_hebrew_mark(char: str) -> bool:
@@ -120,3 +175,130 @@ def ensure_brand(session: Session, name: str) -> uuid.UUID:
     Does not commit: the caller owns the transaction.
     """
     return repository.ensure_brand(session, unicodedata.normalize("NFC", name), normalize_he(name))
+
+
+def _clean(text: str) -> str:
+    """NFC, with runs of whitespace collapsed to one space."""
+    return " ".join(unicodedata.normalize("NFC", text).split())
+
+
+@cache
+def _settlements() -> dict[str, str]:
+    with SETTLEMENTS_CSV.open(encoding="utf-8", newline="") as stream:
+        return {row["code"].strip(): _clean(row["name"]) for row in csv.DictReader(stream)}
+
+
+def settlement_name(code: str) -> str | None:
+    """The name of the settlement with this CBS code, or None for an unknown code."""
+    code = code.strip()
+    if not code.isascii() or not code.isdigit():
+        return None
+    return _settlements().get(str(int(code)))
+
+
+def store_geocode_query(record: StoreRecord) -> str | None:
+    """'<Address>, <settlement name>' (or the address alone, when the settlement is unknown).
+
+    None when there is no address: a settlement alone would place the store at its center.
+    """
+    address = _clean(record.address)
+    if not address:
+        return None
+    city = _clean(record.city_code or "")
+    name = city if city and not city.isdigit() else settlement_name(city) if city else None
+    return _clean(f"{address}, {name}") if name else address
+
+
+def _state(row: Any) -> StoreState:
+    return StoreState(
+        id=row.id,
+        status=row.status,
+        has_location=bool(row.has_location),
+        location_source=row.location_source,
+        geocoded_query=row.geocoded_query,
+        geocode_attempted_at=row.geocode_attempted_at,
+    )
+
+
+def upsert_store(
+    session: Session, chain_id: uuid.UUID, record: StoreRecord, now: datetime
+) -> StoreState:
+    """Create the store, or update its name and address. Returns its state after that.
+
+    The location is not touched here. Does not commit: the caller owns the transaction.
+    """
+    code = record.gov_store_code.strip()
+    name = _clean(record.name)
+    after = repository.upsert_store(
+        session,
+        chain_id=chain_id,
+        gov_store_code=code,
+        sub_chain_code=record.sub_chain_code,
+        name=name,
+        name_norm=normalize_he(name),
+        address=_clean(record.address),
+        city_code=record.city_code,
+        zip_code=record.zip_code,
+        store_type=record.store_type,
+        online=record.online,
+        now=now,
+    )
+    return _state(after)
+
+
+def set_store_geocode_result(
+    session: Session,
+    store_id: uuid.UUID,
+    query: str,
+    point: tuple[float, float] | None,
+    now: datetime,
+) -> None:
+    """Record a geocoding attempt. point is (lat, lng), or None when nothing was found.
+
+    Found: the store gets that location and is active. Not found: a location it already has is
+    kept, and a store with none needs a location. A manual location is never changed.
+    """
+    if point is None:
+        repository.set_store_geocode_failed(session, store_id, query, now)
+    else:
+        repository.set_store_geocoded(session, store_id, query, point[0], point[1], now)
+
+
+def stores_needing_location(session: Session) -> list[StoreRef]:
+    """Physical stores with no location: left out of comparisons until an operator sets one."""
+    return [StoreRef(*row) for row in repository.stores_needing_location(session)]
+
+
+# A rough box around Israel: a manual point outside it is a mistake, such as lat and lng swapped.
+MANUAL_LAT_RANGE = (29.0, 33.5)
+MANUAL_LNG_RANGE = (34.0, 36.0)
+
+
+def _valid_coordinates(lat: float, lng: float) -> bool:
+    return (
+        math.isfinite(lat)
+        and math.isfinite(lng)
+        and MANUAL_LAT_RANGE[0] <= lat <= MANUAL_LAT_RANGE[1]
+        and MANUAL_LNG_RANGE[0] <= lng <= MANUAL_LNG_RANGE[1]
+    )
+
+
+def set_store_location_manual(
+    session: Session, store_id: uuid.UUID, lat: float, lng: float, now: datetime | None = None
+) -> None:
+    """Set a store's location by hand. It is never replaced by geocoding. Raises ValueError,
+    changing nothing, for coordinates outside Israel (roughly), an unknown store or an online
+    store. Does not commit."""
+    if not _valid_coordinates(lat, lng):
+        raise ValueError("coordinates out of range (outside Israel)")
+    when = now if now is not None else datetime.now(UTC)
+    outcome = repository.set_store_location_manual(session, store_id, lat, lng, when)
+    if outcome == "missing":
+        raise ValueError("no such store")
+    if outcome == "online":
+        raise ValueError("an online store has no location")
+
+
+def comparable_store_ids(session: Session, chain_id: uuid.UUID | None = None) -> list[uuid.UUID]:
+    """The stores that take part in comparisons: active, with a location."""
+    return repository.comparable_store_ids(session, chain_id)

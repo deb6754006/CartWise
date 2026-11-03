@@ -18,6 +18,7 @@ RUN --mount=type=secret,id=extra_ca,required=false \
 COPY alembic.ini ./
 COPY migrations ./migrations
 COPY app ./app
+COPY scripts ./scripts
 
 RUN useradd --system --no-create-home cartwise
 USER cartwise

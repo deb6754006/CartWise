@@ -5,8 +5,9 @@ store, and take them one by one: download, hash, skip a file already ingested (A
 hand the XML to the handler of its kind. Each file has a transaction of its own: a broken file is
 rolled back and recorded as failed, and the run goes on to the next one.
 
-The handlers are where Stories 3.3 and 3.4 write stores, prices and promotions. Here they only
-count records.
+The handlers write what is in the files: the Stores handler writes the chain's stores and their
+locations (Story 3.3, ingestion.stores). The price and promotion handlers still only count
+records (Story 3.4 replaces them).
 
 A file URL can carry a signature, so URLs are never logged, and are removed from stored errors.
 """
@@ -24,6 +25,7 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from app.modules.catalog import service as catalog_service
+from app.modules.geo.service import Geocoder
 from app.modules.ingestion import repository
 from app.modules.ingestion.adapters import (
     MAX_DOWNLOAD_BYTES,
@@ -35,6 +37,7 @@ from app.modules.ingestion.adapters import (
 )
 from app.modules.ingestion.decode import count_elements, decode_xml
 from app.modules.ingestion.models import FileKind, RunStatus
+from app.modules.ingestion.stores import stores_handler
 
 logger = logging.getLogger("app.ingestion")
 
@@ -55,12 +58,18 @@ def count_handler(tag: str) -> Handler:
     return handle
 
 
-# Stories 3.3 and 3.4 replace these.
-DEFAULT_HANDLERS: Mapping[FileKind, Handler] = {
-    "stores": count_handler("Store"),
-    "price_full": count_handler("Item"),
-    "promo_full": count_handler("Promotion"),
-}
+def handlers_with_geocoder(geocoder: Geocoder | None) -> Mapping[FileKind, Handler]:
+    """The handlers of every kind. Stores are geocoded with geocoder (None: not geocoded)."""
+    return {
+        "stores": stores_handler(geocoder),
+        # Story 3.4 replaces these.
+        "price_full": count_handler("Item"),
+        "promo_full": count_handler("Promotion"),
+    }
+
+
+# With no geocoder, so no network: the scheduled job passes handlers with the real geocoder.
+DEFAULT_HANDLERS: Mapping[FileKind, Handler] = handlers_with_geocoder(None)
 
 
 @dataclass(frozen=True, slots=True)

@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db import make_engine
 from app.modules.catalog import service as catalog_service
+from app.modules.geo.service import GeoPoint
 from app.modules.ingestion import service
 from app.modules.ingestion.adapters import RemoteFile, remote_file
 from app.modules.ingestion.decode import decode_xml
@@ -95,7 +96,9 @@ def engine(ingestion_url: str) -> Iterator[Engine]:
 @pytest.fixture
 def factory(engine: Engine) -> sessionmaker[Session]:
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE ingestion_files, ingestion_runs, user_clubs, clubs, chains"))
+        conn.execute(
+            text("TRUNCATE ingestion_files, ingestion_runs, stores, user_clubs, clubs, chains")
+        )
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
@@ -436,7 +439,40 @@ def test_ensure_chain_is_idempotent(engine: Engine, factory: sessionmaker[Sessio
 
 def test_the_job_runs_one_chain(engine: Engine, factory: sessionmaker[Session]) -> None:
     adapter = FakeAdapter(_good_files())
-    summary = ingest_job.run("fake", session_factory=factory, adapters=lambda: {"fake": adapter})
+    located: list[str] = []
+
+    class Geocoder:
+        def locate(self, address: str) -> GeoPoint | None:
+            located.append(address)
+            return GeoPoint(lat=31.78, lng=35.22)
+
+    summary = ingest_job.run(
+        "fake", session_factory=factory, adapters=lambda: {"fake": adapter}, geocoder=Geocoder()
+    )
     assert summary is not None
     assert summary.status == "succeeded"
     assert summary.chain_key == "fake"
+    # The job's handlers geocode stores, with the geocoder it was given.
+    assert len(located) == 2
+    statuses = _rows(engine, "SELECT status FROM stores")
+    assert [row["status"] for row in statuses] == ["active", "active"]
+
+
+def test_the_job_uses_the_worker_geocoder_by_default(
+    engine: Engine, factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    located: list[str] = []
+
+    class Geocoder:
+        def locate(self, address: str) -> GeoPoint | None:
+            located.append(address)
+            return GeoPoint(lat=31.78, lng=35.22)
+
+    monkeypatch.setattr(ingest_job, "worker_geocoder", lambda _settings: Geocoder())
+    adapter = FakeAdapter(_good_files())
+    summary = ingest_job.run("fake", session_factory=factory, adapters=lambda: {"fake": adapter})
+    assert summary is not None
+    assert summary.status == "succeeded"
+    assert len(located) == 2
+    statuses = _rows(engine, "SELECT status FROM stores")
+    assert [row["status"] for row in statuses] == ["active", "active"]

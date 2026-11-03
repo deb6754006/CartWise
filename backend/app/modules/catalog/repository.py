@@ -2,13 +2,15 @@
 
 import uuid
 from collections.abc import Collection, Sequence
+from datetime import datetime
+from typing import Any, Literal
 
-from sqlalchemy import case, select
+from sqlalchemy import case, cast, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.ids import new_id
-from app.modules.catalog.models import Brand, Chain, Club
+from app.modules.catalog.models import Brand, Chain, Club, Geography, Store
 
 
 def list_chains(session: Session) -> Sequence[tuple[uuid.UUID, str]]:
@@ -104,3 +106,157 @@ def ensure_brand(session: Session, name: str, name_norm: str) -> uuid.UUID:
         .on_conflict_do_nothing(index_elements=[Brand.name])
     )
     return session.execute(select(Brand.id).where(Brand.name == name)).scalar_one()
+
+
+# id, status, has_location, location_source, geocoded_query, geocode_attempted_at
+_STORE_STATE = (
+    Store.id,
+    Store.status,
+    Store.location.is_not(None).label("has_location"),
+    Store.location_source,
+    Store.geocoded_query,
+    Store.geocode_attempted_at,
+)
+
+
+def _point(lat: float, lng: float) -> Any:
+    return cast(func.ST_SetSRID(func.ST_MakePoint(lng, lat), 4326), Geography())
+
+
+# A row of _STORE_STATE, by attribute (row.id, row.has_location, ...).
+type StoreStateRow = Any
+
+
+def upsert_store(
+    session: Session,
+    *,
+    chain_id: uuid.UUID,
+    gov_store_code: str,
+    sub_chain_code: str | None,
+    name: str,
+    name_norm: str,
+    address: str,
+    city_code: str | None,
+    zip_code: str | None,
+    store_type: int | None,
+    online: bool,
+    now: datetime,
+) -> StoreStateRow:
+    """Insert the store, or update its details from the file. Its location is left as it is.
+
+    The status follows the store: online for an online store, and for a physical one active when
+    it has a location and needs_location when it has none.
+    """
+    details = {
+        "sub_chain_code": sub_chain_code,
+        "name": name,
+        "name_norm": name_norm,
+        "address": address,
+        "city_code": city_code,
+        "zip_code": zip_code,
+        "store_type": store_type,
+        "last_seen_at": now,
+        "updated_at": now,
+    }
+    insert_stmt = insert(Store).values(
+        id=new_id(),
+        chain_id=chain_id,
+        gov_store_code=gov_store_code,
+        status="online" if online else "needs_location",
+        created_at=now,
+        **details,
+    )
+    status: Any = (
+        "online"
+        if online
+        else case((Store.location.is_not(None), "active"), else_="needs_location")
+    )
+    stmt = insert_stmt.on_conflict_do_update(
+        index_elements=[Store.chain_id, Store.gov_store_code],
+        set_={**details, "status": status},
+    ).returning(*_STORE_STATE)
+    return session.execute(stmt).one()
+
+
+def set_store_geocoded(
+    session: Session, store_id: uuid.UUID, query: str, lat: float, lng: float, now: datetime
+) -> None:
+    session.execute(
+        update(Store)
+        .where(Store.id == store_id, Store.location_source.is_distinct_from("manual"))
+        .values(
+            location=_point(lat, lng),
+            location_source="geocoded",
+            geocoded_query=query,
+            geocode_attempted_at=None,
+            status="active",
+            updated_at=now,
+        )
+    )
+
+
+def set_store_geocode_failed(
+    session: Session, store_id: uuid.UUID, query: str, now: datetime
+) -> None:
+    """A location the store already has is kept, and so is its status."""
+    session.execute(
+        update(Store)
+        .where(Store.id == store_id, Store.location_source.is_distinct_from("manual"))
+        .values(
+            geocoded_query=query,
+            geocode_attempted_at=now,
+            status=case((Store.location.is_not(None), Store.status), else_="needs_location"),
+            updated_at=now,
+        )
+    )
+
+
+def set_store_location_manual(
+    session: Session, store_id: uuid.UUID, lat: float, lng: float, now: datetime
+) -> Literal["set", "missing", "online"]:
+    """An online store is not changed."""
+    status = session.execute(
+        select(Store.status).where(Store.id == store_id).with_for_update()
+    ).scalar_one_or_none()
+    if status is None:
+        return "missing"
+    if status == "online":
+        return "online"
+    session.execute(
+        update(Store)
+        .where(Store.id == store_id)
+        .values(
+            location=_point(lat, lng),
+            location_source="manual",
+            status="active",
+            updated_at=now,
+        )
+    )
+    return "set"
+
+
+def stores_needing_location(
+    session: Session,
+) -> Sequence[tuple[uuid.UUID, uuid.UUID, str, str, str, str, str | None]]:
+    stmt = (
+        select(
+            Store.id,
+            Store.chain_id,
+            Chain.name,
+            Store.gov_store_code,
+            Store.name,
+            Store.address,
+            Store.city_code,
+        )
+        .join(Chain, Store.chain_id == Chain.id)
+        .where(Store.status == "needs_location")
+        .order_by(Chain.name, Chain.id, func.length(Store.gov_store_code), Store.gov_store_code)
+    )
+    return [(r[0], r[1], r[2], r[3], r[4], r[5], r[6]) for r in session.execute(stmt).all()]
+
+
+def comparable_store_ids(session: Session, chain_id: uuid.UUID | None) -> list[uuid.UUID]:
+    stmt = select(Store.id).where(Store.status == "active", Store.location.is_not(None))
+    if chain_id is not None:
+        stmt = stmt.where(Store.chain_id == chain_id)
+    return list(session.execute(stmt.order_by(Store.id)).scalars())

@@ -248,3 +248,20 @@ def test_concurrent_callers_get_separate_turns() -> None:
     for thread in threads:
         thread.join()
     assert sorted(waits) == [1.0, 2.0, 3.0]
+
+
+def test_a_spacer_with_no_wait_limit_never_refuses() -> None:
+    spacer = RequestSpacer(clock=lambda: 1000.0, sleep=lambda _seconds: None, max_wait=None)
+    allowed = int(MAX_WAIT_SECONDS / MIN_INTERVAL_SECONDS) + 1
+    assert all(spacer.wait_for_turn() for _ in range(allowed + 10))
+
+
+def test_the_worker_geocoder_waits_with_no_limit() -> None:
+    service._worker_geocoder_for.cache_clear()
+    geocoder = service.worker_geocoder(Settings(NOMINATIM_URL=URL))
+    assert isinstance(geocoder, NominatimGeocoder)
+    assert geocoder._url == URL
+    assert geocoder._spacer._max_wait is None
+    assert service.worker_geocoder(Settings(NOMINATIM_URL=URL)) is geocoder
+    assert geocoder is not service.default_geocoder(Settings(NOMINATIM_URL=URL))
+    service._worker_geocoder_for.cache_clear()

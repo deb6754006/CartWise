@@ -58,7 +58,7 @@ def decode_xml(data: bytes, max_xml_bytes: int = MAX_XML_BYTES) -> Element:
     return fromstring(text)  # noqa: S314 (no DTD, see above; expat limits entity expansion)
 
 
-def _local_name(tag: str) -> str:
+def local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
 
@@ -68,7 +68,7 @@ def count_elements(root: Element, tag: str) -> int:
     return sum(
         1
         for element in root.iter()
-        if isinstance(element.tag, str) and _local_name(element.tag).lower() == wanted
+        if isinstance(element.tag, str) and local_name(element.tag).lower() == wanted
     )
 
 
