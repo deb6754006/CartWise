@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Literal
 
 from sqlalchemy import (
@@ -10,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Numeric,
     SmallInteger,
     String,
     Text,
@@ -28,6 +30,12 @@ LocationSource = Literal["geocoded", "manual"]
 
 STORE_STATUSES: tuple[StoreStatus, ...] = ("active", "needs_location", "online")
 LOCATION_SOURCES: tuple[LocationSource, ...] = ("geocoded", "manual")
+
+PackUnit = Literal["unit", "g", "kg", "ml", "l"]
+ProductStatus = Literal["active"]
+
+PACK_UNITS: tuple[PackUnit, ...] = ("unit", "g", "kg", "ml", "l")
+PRODUCT_STATUSES: tuple[ProductStatus, ...] = ("active",)
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -126,3 +134,37 @@ class Store(Base):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Product(Base):
+    """A product. One with a barcode is keyed by it (unique); one without (such as produce sold by
+    weight) is matched through matching.service (Story 3.6, Epic 4). name_norm is set only from
+    catalog.service.normalize_he(name). The first name a barcode was seen with stays."""
+
+    __tablename__ = "products"
+    __table_args__ = (
+        CheckConstraint(_in("pack_unit", PACK_UNITS), name="pack_unit"),
+        CheckConstraint(_in("status", PRODUCT_STATUSES), name="status"),
+        CheckConstraint("pack_size > 0", name="pack_size"),
+        # Trigram, because search matches a substring of name_norm.
+        Index(
+            "ix_products_name_norm",
+            "name_norm",
+            postgresql_using="gin",
+            postgresql_ops={"name_norm": "gin_trgm_ops"},
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
+    # As in the file, leading zeros kept.
+    barcode: Mapped[str | None] = mapped_column(Text, unique=True, nullable=True)
+    name: Mapped[str] = mapped_column(Text)
+    name_norm: Mapped[str] = mapped_column(Text)
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("brands.id"), nullable=True)
+    # No categories table yet: it comes with the category tree.
+    category_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    pack_size: Mapped[Decimal | None] = mapped_column(Numeric, nullable=True)
+    pack_unit: Mapped[PackUnit | None] = mapped_column(String(8), nullable=True)
+    is_weighted: Mapped[bool] = mapped_column(Boolean)
+    status: Mapped[ProductStatus] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

@@ -11,7 +11,6 @@ Addresses never go into a log line.
 
 import logging
 import re
-import unicodedata
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -23,6 +22,7 @@ from app.core.errors import AppError
 from app.modules.catalog import service as catalog_service
 from app.modules.catalog.service import StoreRecord, StoreState
 from app.modules.geo.service import Geocoder, GeoPoint
+from app.modules.ingestion.decode import child_fields as _fields
 from app.modules.ingestion.decode import local_name
 
 logger = logging.getLogger("app.ingestion")
@@ -35,19 +35,6 @@ RETRY_FAILED_AFTER = timedelta(hours=24)
 _DIGITS = re.compile(r"[0-9]+")
 # store_type is a smallint.
 MAX_STORE_TYPE = 32767
-
-
-def _text(value: str | None) -> str:
-    return " ".join(unicodedata.normalize("NFC", value or "").split())
-
-
-def _fields(element: Element) -> dict[str, str]:
-    """The text of each child, by lowercased local name. The first of a name wins."""
-    fields: dict[str, str] = {}
-    for child in element:
-        if isinstance(child.tag, str):
-            fields.setdefault(local_name(child.tag).lower(), _text(child.text))
-    return fields
 
 
 def _record(element: Element, sub_chain_code: str | None) -> StoreRecord | None:

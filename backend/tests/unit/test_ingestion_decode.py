@@ -33,9 +33,9 @@ def test_utf16_big_endian() -> None:
 def test_gz_utf8_price_and_promo_files() -> None:
     price = decode_xml(gzip.compress(_fixture("price_full.xml")))
     promo = decode_xml(gzip.compress(_fixture("promo_full.xml")))
-    assert count_records("price_full", price) == 3
+    assert count_records("price_full", price) == 4
     # The items inside a promotion are not promotions.
-    assert count_records("promo_full", promo) == 2
+    assert count_records("promo_full", promo) == 3
     assert promo.findtext(".//ClubID") == "0 - כלל הלקוחות"
 
 

@@ -1,7 +1,7 @@
 """catalog: data access. Only this module's repository touches its tables."""
 
 import uuid
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
 from typing import Any, Literal
 
@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.ids import new_id
-from app.modules.catalog.models import Brand, Chain, Club, Geography, Store
+from app.modules.catalog.models import Brand, Chain, Club, Geography, Product, Store
 
 
 def list_chains(session: Session) -> Sequence[tuple[uuid.UUID, str]]:
@@ -260,3 +260,42 @@ def comparable_store_ids(session: Session, chain_id: uuid.UUID | None) -> list[u
     if chain_id is not None:
         stmt = stmt.where(Store.chain_id == chain_id)
     return list(session.execute(stmt.order_by(Store.id)).scalars())
+
+
+def chain_name(session: Session, chain_id: uuid.UUID) -> str:
+    return session.execute(select(Chain.name).where(Chain.id == chain_id)).scalar_one()
+
+
+def store_id_by_code(
+    session: Session, chain_id: uuid.UUID, gov_store_code: str
+) -> uuid.UUID | None:
+    stmt = select(Store.id).where(
+        Store.chain_id == chain_id, Store.gov_store_code == gov_store_code
+    )
+    return session.execute(stmt).scalar_one_or_none()
+
+
+# Rows per statement: well under Postgres's 65535 parameters, at 9 columns a row.
+PRODUCT_BATCH = 1000
+
+
+def insert_products(session: Session, rows: Sequence[Mapping[str, Any]]) -> None:
+    """Insert products, in batches. A barcode that already has a product is left as it is."""
+    for start in range(0, len(rows), PRODUCT_BATCH):
+        batch = rows[start : start + PRODUCT_BATCH]
+        session.execute(
+            insert(Product)
+            .values(list(batch))
+            .on_conflict_do_nothing(index_elements=[Product.barcode])
+        )
+
+
+def product_ids_by_barcode(session: Session, barcodes: Sequence[str]) -> dict[str, uuid.UUID]:
+    found: dict[str, uuid.UUID] = {}
+    for start in range(0, len(barcodes), PRODUCT_BATCH):
+        batch = barcodes[start : start + PRODUCT_BATCH]
+        stmt = select(Product.barcode, Product.id).where(Product.barcode.in_(batch))
+        for barcode, product_id in session.execute(stmt).all():
+            if barcode is not None:
+                found[barcode] = product_id
+    return found

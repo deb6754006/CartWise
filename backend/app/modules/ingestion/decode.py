@@ -6,6 +6,7 @@ Files come gz or plain, in UTF-8 or UTF-16 (Rami Levy's and Carrefour's Stores f
 import gzip
 import io
 import re
+import unicodedata
 from xml.etree.ElementTree import Element, fromstring
 
 from app.modules.ingestion.models import FileKind
@@ -60,6 +61,20 @@ def decode_xml(data: bytes, max_xml_bytes: int = MAX_XML_BYTES) -> Element:
 
 def local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
+
+
+def clean_text(value: str | None) -> str:
+    """NFC, with runs of whitespace collapsed to one space."""
+    return " ".join(unicodedata.normalize("NFC", value or "").split())
+
+
+def child_fields(element: Element) -> dict[str, str]:
+    """The cleaned text of each child, by lowercased local name. The first of a name wins."""
+    fields: dict[str, str] = {}
+    for child in element:
+        if isinstance(child.tag, str):
+            fields.setdefault(local_name(child.tag).lower(), clean_text(child.text))
+    return fields
 
 
 def count_elements(root: Element, tag: str) -> int:

@@ -1,23 +1,50 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Fictional: invented items and prices, in the shape of a PriceFull file. -->
+<!-- Fictional: invented items, barcodes and prices, in the shape of a PriceFull file. -->
 <Root>
-  <ChainId>7290027600007</ChainId>
-  <StoreId>5</StoreId>
-  <Items Count="3">
+  <ChainId>7290000000001</ChainId>
+  <SubChainId>1</SubChainId>
+  <StoreId>101</StoreId>
+  <Items Count="4">
     <Item>
+      <PriceUpdateDate>2026-11-01 08:00:00</PriceUpdateDate>
       <ItemCode>1000000000001</ItemCode>
+      <ItemType>1</ItemType>
       <ItemName>חלב בדוי 3%</ItemName>
+      <UnitQty>ליטר</UnitQty>
+      <Quantity>1.00</Quantity>
+      <bIsWeighted>0</bIsWeighted>
       <ItemPrice>6.90</ItemPrice>
+      <PriceUpdateTime>2026-11-01 08:00:00</PriceUpdateTime>
     </Item>
     <Item>
       <ItemCode>1000000000002</ItemCode>
+      <ItemType>1</ItemType>
       <ItemName>לחם דמיוני</ItemName>
+      <UnitQty>גרם</UnitQty>
+      <Quantity>750.00</Quantity>
+      <bIsWeighted>0</bIsWeighted>
       <ItemPrice>9.50</ItemPrice>
+      <PriceUpdateTime>2026-11-01 08:00:00</PriceUpdateTime>
     </Item>
     <Item>
       <ItemCode>1000000000003</ItemCode>
+      <ItemType>1</ItemType>
       <ItemName>גבינה מומצאת</ItemName>
-      <ItemPrice>12.00</ItemPrice>
+      <UnitQty>קילוגרם</UnitQty>
+      <Quantity>1.00</Quantity>
+      <bIsWeighted>1</bIsWeighted>
+      <ItemPrice>66.00</ItemPrice>
+      <PriceUpdateTime>2026-11-01 08:00:00</PriceUpdateTime>
+    </Item>
+    <Item>
+      <ItemCode>7001</ItemCode>
+      <ItemType>0</ItemType>
+      <ItemName>עגבניה בדויה</ItemName>
+      <UnitQty>קילוגרם</UnitQty>
+      <Quantity>1.00</Quantity>
+      <bIsWeighted>1</bIsWeighted>
+      <ItemPrice>7.90</ItemPrice>
+      <PriceUpdateTime>2026-11-01 08:00:00</PriceUpdateTime>
     </Item>
   </Items>
 </Root>

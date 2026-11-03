@@ -1,25 +1,83 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Fictional: invented promotions, in the shape of a PromoFull file. -->
+<!-- Fictional: invented promotions, barcodes and prices, in the shape of a PromoFull file. -->
 <Root>
-  <ChainId>7290027600007</ChainId>
-  <StoreId>5</StoreId>
-  <Promotions Count="2">
+  <ChainId>7290000000001</ChainId>
+  <SubChainId>1</SubChainId>
+  <StoreId>101</StoreId>
+  <Promotions Count="3">
     <Promotion>
       <PromotionId>1</PromotionId>
       <PromotionDescription>2 ב-10</PromotionDescription>
+      <PromotionStartDateTime>2026-11-01T00:00:00.000</PromotionStartDateTime>
+      <PromotionEndDateTime>2099-12-31T23:59:00.000</PromotionEndDateTime>
       <ClubID>0 - כלל הלקוחות</ClubID>
-      <PromotionItems Count="2">
-        <Item><ItemCode>1000000000001</ItemCode></Item>
-        <Item><ItemCode>1000000000002</ItemCode></Item>
-      </PromotionItems>
+      <AdditionalIsCoupon>0</AdditionalIsCoupon>
+      <Groups>
+        <Group>
+          <PromotionItems Count="2">
+            <PromotionItem>
+              <ItemCode>1000000000001</ItemCode>
+              <ItemType>1</ItemType>
+              <RewardType>10</RewardType>
+              <MinQty>2</MinQty>
+              <DiscountRate></DiscountRate>
+              <DiscountedPrice>10.00</DiscountedPrice>
+            </PromotionItem>
+            <PromotionItem>
+              <ItemCode>1000000000002</ItemCode>
+              <ItemType>1</ItemType>
+              <RewardType>10</RewardType>
+              <MinQty>2</MinQty>
+              <DiscountRate></DiscountRate>
+              <DiscountedPrice>10.00</DiscountedPrice>
+            </PromotionItem>
+          </PromotionItems>
+        </Group>
+      </Groups>
     </Promotion>
     <Promotion>
       <PromotionId>2</PromotionId>
       <PromotionDescription>מבצע מועדון בדוי</PromotionDescription>
-      <ClubID>2 - מועדון בדוי</ClubID>
-      <PromotionItems Count="1">
-        <Item><ItemCode>1000000000003</ItemCode></Item>
-      </PromotionItems>
+      <PromotionStartDateTime>2026-11-01T00:00:00.000</PromotionStartDateTime>
+      <PromotionEndDateTime>2099-12-31T23:59:00.000</PromotionEndDateTime>
+      <ClubID>(2=מועדון בדוי|2=מועדון אפליקציה)</ClubID>
+      <AdditionalIsCoupon>0</AdditionalIsCoupon>
+      <Groups>
+        <Group>
+          <PromotionItems Count="1">
+            <PromotionItem>
+              <ItemCode>1000000000003</ItemCode>
+              <ItemType>1</ItemType>
+              <RewardType>3</RewardType>
+              <MinQty>0.010</MinQty>
+              <DiscountRate></DiscountRate>
+              <DiscountedPrice>59.90</DiscountedPrice>
+            </PromotionItem>
+          </PromotionItems>
+        </Group>
+      </Groups>
+    </Promotion>
+    <Promotion>
+      <PromotionId>3</PromotionId>
+      <PromotionDescription>קופון בדוי</PromotionDescription>
+      <PromotionStartDateTime>2026-11-01T00:00:00.000</PromotionStartDateTime>
+      <PromotionEndDateTime>2099-12-31T23:59:00.000</PromotionEndDateTime>
+      <ClubID>0</ClubID>
+      <AdditionalIsCoupon>1</AdditionalIsCoupon>
+      <Groups>
+        <Group>
+          <PromotionItems Count="1">
+            <PromotionItem>
+              <ItemCode>1000000000001</ItemCode>
+              <ItemType>1</ItemType>
+              <RewardType>3</RewardType>
+              <MinQty>1</MinQty>
+              <DiscountRate></DiscountRate>
+              <DiscountedPrice>3.00</DiscountedPrice>
+            </PromotionItem>
+          </PromotionItems>
+        </Group>
+      </Groups>
     </Promotion>
   </Promotions>
 </Root>

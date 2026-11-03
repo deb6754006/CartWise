@@ -6,8 +6,9 @@ hand the XML to the handler of its kind. Each file has a transaction of its own:
 rolled back and recorded as failed, and the run goes on to the next one.
 
 The handlers write what is in the files: the Stores handler writes the chain's stores and their
-locations (Story 3.3, ingestion.stores). The price and promotion handlers still only count
-records (Story 3.4 replaces them).
+locations (Story 3.3, ingestion.stores), and the PriceFull and PromoFull handlers a store's
+products, price observations and promotions (Story 3.4, ingestion.prices). After each run, the
+current prices (pricing's materialized view) are refreshed.
 
 A file URL can carry a signature, so URLs are never logged, and are removed from stored errors.
 """
@@ -35,9 +36,11 @@ from app.modules.ingestion.adapters import (
     latest_per_store,
     redact_urls,
 )
-from app.modules.ingestion.decode import count_elements, decode_xml
+from app.modules.ingestion.decode import decode_xml
 from app.modules.ingestion.models import FileKind, RunStatus
+from app.modules.ingestion.prices import SOURCE_REF_ATTRIBUTE, price_handler, promo_handler
 from app.modules.ingestion.stores import stores_handler
+from app.modules.pricing import service as pricing_service
 
 logger = logging.getLogger("app.ingestion")
 
@@ -49,22 +52,12 @@ type Clock = Callable[[], datetime]
 type FileOutcome = Literal["ingested", "skipped", "failed"]
 
 
-def count_handler(tag: str) -> Handler:
-    """A handler that writes nothing and counts the elements named tag."""
-
-    def handle(_session: Session, _chain_id: uuid.UUID, root: Element) -> int:
-        return count_elements(root, tag)
-
-    return handle
-
-
 def handlers_with_geocoder(geocoder: Geocoder | None) -> Mapping[FileKind, Handler]:
     """The handlers of every kind. Stores are geocoded with geocoder (None: not geocoded)."""
     return {
         "stores": stores_handler(geocoder),
-        # Story 3.4 replaces these.
-        "price_full": count_handler("Item"),
-        "promo_full": count_handler("Promotion"),
+        "price_full": price_handler(),
+        "promo_full": promo_handler(),
     }
 
 
@@ -126,6 +119,7 @@ def _ingest_file(
                 return "skipped", 0
             root = decode_xml(data)
             del data
+            root.set(SOURCE_REF_ATTRIBUTE, file.name)
             records = handlers[file.kind](session, chain_id, root)
             del root
             repository.add_file(
@@ -165,6 +159,19 @@ def _ingest_file(
             )
             session.commit()
         return "failed", 0
+
+
+def _refresh_current_prices(session_factory: Callable[[], Session], chain_key: str) -> None:
+    """After a run that ingested a file, partial ones included. A failure is logged and leaves the
+    run as it is: the next run that ingests a file refreshes again."""
+    try:
+        with session_factory() as session:
+            pricing_service.refresh_current_prices(session)
+            session.commit()
+    except Exception as exc:
+        logger.warning(
+            "ingestion_refresh_failed", extra={"chain": chain_key, "error": type(exc).__name__}
+        )
 
 
 def _run(
@@ -225,6 +232,8 @@ def _run(
             now=now(),
         )
         session.commit()
+    if counts["ingested"]:
+        _refresh_current_prices(session_factory, adapter.key)
 
     summary = RunSummary(
         run_id=run_id,

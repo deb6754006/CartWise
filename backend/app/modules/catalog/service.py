@@ -4,17 +4,19 @@ import csv
 import math
 import unicodedata
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from functools import cache
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.ids import new_id
 from app.modules.catalog import repository
-from app.modules.catalog.models import LocationSource, StoreStatus
+from app.modules.catalog.models import LocationSource, PackUnit, StoreStatus
 
 # Search needs this many characters, after normalizing.
 MIN_BRAND_SEARCH_LENGTH = 2
@@ -302,3 +304,74 @@ def set_store_location_manual(
 def comparable_store_ids(session: Session, chain_id: uuid.UUID | None = None) -> list[uuid.UUID]:
     """The stores that take part in comparisons: active, with a location."""
     return repository.comparable_store_ids(session, chain_id)
+
+
+def store_id_by_code(
+    session: Session, chain_id: uuid.UUID, gov_store_code: str
+) -> uuid.UUID | None:
+    """The chain's store with this government store code (leading zeros dropped), or None."""
+    code = gov_store_code.strip()
+    if code.isascii() and code.isdigit():
+        code = code.lstrip("0") or "0"
+    return repository.store_id_by_code(session, chain_id, code)
+
+
+def ensure_chain_club(session: Session, chain_id: uuid.UUID) -> uuid.UUID:
+    """The chain's club, 'מועדון <chain name>', created if missing: one per chain. Returns its id.
+
+    Does not commit: the caller owns the transaction.
+    """
+    name = unicodedata.normalize("NFC", f"מועדון {repository.chain_name(session, chain_id)}")
+    return repository.ensure_club(session, chain_id, name)
+
+
+@dataclass(frozen=True, slots=True)
+class ProductRecord:
+    """A product with a barcode, as read from a chain's price file."""
+
+    barcode: str
+    name: str
+    pack_size: Decimal | None
+    pack_unit: PackUnit | None
+    is_weighted: bool
+
+
+def ensure_products_by_barcode(
+    session: Session, items: Iterable[ProductRecord], now: datetime | None = None
+) -> dict[str, uuid.UUID]:
+    """The product id of each item's barcode. A barcode with no product gets one, from the first
+    item with it; an existing product is not changed (its first name stays).
+
+    Barcodes are kept as they are, leading zeros included. Does not commit.
+    """
+    when = now if now is not None else datetime.now(UTC)
+    first: dict[str, ProductRecord] = {}
+    for item in items:
+        first.setdefault(item.barcode, item)
+    # Sorted, so two chains inserting the same barcodes at once take the locks in one order.
+    barcodes = sorted(first)
+    rows = []
+    for barcode in barcodes:
+        item = first[barcode]
+        name = _clean(item.name)
+        rows.append(
+            {
+                "id": new_id(),
+                "barcode": barcode,
+                "name": name,
+                "name_norm": normalize_he(name),
+                "pack_size": item.pack_size if item.pack_unit is not None else None,
+                "pack_unit": item.pack_unit if item.pack_size is not None else None,
+                "is_weighted": item.is_weighted,
+                "status": "active",
+                "created_at": when,
+            }
+        )
+    repository.insert_products(session, rows)
+    return repository.product_ids_by_barcode(session, barcodes)
+
+
+def product_ids_by_barcode(session: Session, barcodes: Iterable[str]) -> dict[str, uuid.UUID]:
+    """The id of the existing product of each barcode that has one. Creates nothing."""
+    wanted: Sequence[str] = sorted(set(barcodes))
+    return repository.product_ids_by_barcode(session, wanted)

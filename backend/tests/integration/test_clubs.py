@@ -48,7 +48,8 @@ def factory(engine: Engine) -> sessionmaker[Session]:
     with engine.begin() as conn:
         conn.execute(
             text(
-                "TRUNCATE ingestion_files, ingestion_runs, stores, user_clubs, clubs, chains, "
+                "TRUNCATE promotion_products, promotions, price_observations, products, "
+                "ingestion_files, ingestion_runs, stores, user_clubs, clubs, chains, "
                 "devices, users"
             )
         )

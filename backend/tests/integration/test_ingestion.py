@@ -97,7 +97,10 @@ def engine(ingestion_url: str) -> Iterator[Engine]:
 def factory(engine: Engine) -> sessionmaker[Session]:
     with engine.begin() as conn:
         conn.execute(
-            text("TRUNCATE ingestion_files, ingestion_runs, stores, user_clubs, clubs, chains")
+            text(
+                "TRUNCATE promotion_products, promotions, price_observations, products, "
+                "ingestion_files, ingestion_runs, stores, user_clubs, clubs, chains"
+            )
         )
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
@@ -177,17 +180,20 @@ def test_a_broken_file_fails_alone(
     summary = _ingest(factory, FakeAdapter(files))
 
     assert summary.status == "partial"
-    assert (summary.files_ingested, summary.files_failed, summary.records) == (2, 1, 4)
+    # With no prices, no product is known: the promotions file fails too, to be taken again.
+    assert (summary.files_ingested, summary.files_failed, summary.records) == (1, 2, 2)
     rows = {row["file_name"]: row for row in _files(engine)}
-    assert rows[STORES]["status"] == rows[PROMO]["status"] == "succeeded"
+    assert rows[STORES]["status"] == "succeeded"
+    assert rows[PROMO]["status"] == "failed"
+    assert rows[PROMO]["error"] == "ValueError: no promotion matched a known product"
     failed = rows[PRICE]
     assert failed["status"] == "failed"
     assert failed["records"] == 0
     assert failed["error"].startswith(error_type)
     assert failed["file_hash"] is not None
     [run] = _runs(engine)
-    assert (run["status"], run["files_failed"], run["records"]) == ("partial", 1, 4)
-    assert run["error"] == "1 of 3 files failed"
+    assert (run["status"], run["files_failed"], run["records"]) == ("partial", 2, 2)
+    assert run["error"] == "2 of 3 files failed"
 
 
 def test_a_failing_handler_is_rolled_back_alone(
@@ -256,7 +262,11 @@ def test_the_same_name_with_other_bytes_is_ingested(
 ) -> None:
     _ingest(factory, FakeAdapter(_good_files()))
     files = _good_files()
-    files[PRICE] = gzip.compress(b"<Root><Items><Item/></Items></Root>")
+    files[PRICE] = gzip.compress(
+        "<Root><StoreId>101</StoreId><Items><Item><ItemCode>1000000000001</ItemCode>"
+        "<ItemType>1</ItemType><ItemName>חלב בדוי 3%</ItemName><ItemPrice>7.10</ItemPrice>"
+        "</Item></Items></Root>".encode()
+    )
     summary = _ingest(factory, FakeAdapter(files))
 
     assert (summary.files_ingested, summary.files_skipped, summary.records) == (1, 2, 1)
@@ -276,10 +286,11 @@ def test_a_file_that_failed_is_ingested_again(
     # The same bytes fail first (in the handler), so the failed row has the same hash.
     handlers = {**DEFAULT_HANDLERS, "price_full": fails_once}
     first = _ingest(factory, FakeAdapter(files), handlers=handlers)
-    assert first.files_failed == 1
+    # The promotions file fails with it: no product is known yet.
+    assert first.files_failed == 2
 
     second = _ingest(factory, FakeAdapter(files))
-    assert (second.files_ingested, second.files_skipped, second.files_failed) == (1, 2, 0)
+    assert (second.files_ingested, second.files_skipped, second.files_failed) == (2, 1, 0)
     price_rows = [row for row in _files(engine) if row["file_name"] == PRICE]
     assert [row["status"] for row in price_rows] == ["failed", "succeeded"]
     assert price_rows[0]["file_hash"] == price_rows[1]["file_hash"]
@@ -402,15 +413,14 @@ def test_an_abandoned_run_is_marked(engine: Engine, factory: sessionmaker[Sessio
 def test_a_file_over_the_xml_cap_fails(
     engine: Engine, factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(service, "decode_xml", functools.partial(decode_xml, max_xml_bytes=2000))
+    monkeypatch.setattr(service, "decode_xml", functools.partial(decode_xml, max_xml_bytes=5000))
     files = _good_files()
     files[PRICE] = gzip.compress(b"<Root>" + b" " * 10_000 + b"</Root>")
     summary = _ingest(factory, FakeAdapter(files))
 
     assert summary.status == "partial"
-    [failed] = [row for row in _files(engine) if row["status"] == "failed"]
-    assert failed["file_name"] == PRICE
-    assert failed["error"].startswith("XmlTooLargeError")
+    failed = {row["file_name"]: row for row in _files(engine) if row["status"] == "failed"}
+    assert failed[PRICE]["error"].startswith("XmlTooLargeError")
 
 
 def test_a_download_over_the_cap_fails(
@@ -421,10 +431,12 @@ def test_a_download_over_the_cap_fails(
     monkeypatch.setattr(service, "MAX_DOWNLOAD_BYTES", cap)
     files[STORES] = b" " * (cap + 1)
     summary = _ingest(factory, FakeAdapter(files))
-    [failed] = [row for row in _files(engine) if row["status"] == "failed"]
-    assert failed["file_name"] == STORES
-    assert failed["error"].startswith("DownloadTooLargeError")
-    assert summary.files_failed == 1
+    failed = {row["file_name"]: row for row in _files(engine) if row["status"] == "failed"}
+    assert failed[STORES]["error"].startswith("DownloadTooLargeError")
+    # With no stores, the store's price and promotion files fail too, to be taken next run.
+    assert failed[PRICE]["error"] == "UnknownStoreError: unknown store 101"
+    assert failed[PROMO]["error"] == "UnknownStoreError: unknown store 101"
+    assert summary.files_failed == 3
 
 
 def test_ensure_chain_is_idempotent(engine: Engine, factory: sessionmaker[Session]) -> None:
