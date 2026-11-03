@@ -29,6 +29,28 @@ docker compose exec worker python -c "from app.worker.jobs import purge_deleted;
 
 המיגרציות רצות ב-`api`, ולכן ה-worker עולה אחריו.
 
+### קליטת קובצי המחירים
+
+ה-worker קולט את הקבצים הרשמיים של שופרסל, רמי לוי וקרפור: job לכל רשת (`ingest_shufersal`, `ingest_rami_levy`, `ingest_carrefour`). הריצה הראשונה מתחילה כמה דקות אחרי שה-worker עולה, ואחר כך כל `INGEST_INTERVAL_HOURS` שעות. בכל ריצה נקלט הקובץ האחרון של כל סוג (Stores, PriceFull, PromoFull) ולכל סניף. קובץ שכבר נקלט, עם אותו שם ואותו תוכן, מדולג. כל ריצה נרשמת ב-`ingestion_runs`, וכל קובץ ב-`ingestion_files`, עם מספר הרשומות והשגיאה, אם הייתה.
+
+ההגדרות (משתני סביבה), עם ברירות המחדל:
+
+| משתנה | ברירת מחדל | |
+|---|---|---|
+| `INGEST_INTERVAL_HOURS` | `6` | בין 1 ל-6 |
+| `SHUFERSAL_PRICES_URL` | `https://prices.shufersal.co.il` | |
+| `CERBERUS_URL` | `https://url.publishedprices.co.il` | הפורטל של רמי לוי |
+| `CERBERUS_RAMI_LEVY_USERNAME` | `RamiLevi` | שם משתמש ציבורי, בלי סיסמה. לא סוד |
+| `CARREFOUR_PRICES_URL` | `https://prices.carrefour.co.il` | |
+
+הרצה ידנית של רשת אחת, בלי לחכות לתזמון:
+
+```bash
+docker compose exec worker python -m app.worker.jobs.ingest_chain shufersal   # או rami_levy, carrefour
+```
+
+שגיאת תעודה (certificate) בריצה כזו, ברשת מסוננת, נובעת מהסינון. היא נרשמת בשורת הריצה, ולא מבטלים בגללה את בדיקת ה-TLS.
+
 ## רשת עם סינון TLS (למשל NetFree)
 
 אם בניית ה-image נכשלת בשגיאת תעודה (certificate) בשלב `uv sync`, צריך להגדיר את משתנה הסביבה `CARTWISE_EXTRA_CA`, עם הנתיב לקובץ התעודות **המלא** של הרשת. התעודה משמשת רק בזמן הבנייה, ולא נכנסת ל-image.

@@ -53,8 +53,8 @@ def factory(engine: Engine) -> sessionmaker[Session]:
     with engine.begin() as conn:
         conn.execute(
             text(
-                "TRUNCATE user_clubs, user_brands, user_prefs, clubs, chains, brands, "
-                "devices, users"
+                "TRUNCATE ingestion_files, ingestion_runs, user_clubs, user_brands, user_prefs, "
+                "clubs, chains, brands, devices, users"
             )
         )
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)

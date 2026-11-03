@@ -19,6 +19,12 @@ DEFAULT_FIREBASE_JWKS_URL = (
     "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"
 )
 DEFAULT_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+# The chains' official price portals (Story 3.1). Open to anyone; no key and no account.
+DEFAULT_SHUFERSAL_PRICES_URL = "https://prices.shufersal.co.il"
+DEFAULT_CERBERUS_URL = "https://url.publishedprices.co.il"
+DEFAULT_CARREFOUR_PRICES_URL = "https://prices.carrefour.co.il"
+# Rami Levy's public user name on the Cerberus portal (no password). Not a secret.
+DEFAULT_CERBERUS_RAMI_LEVY_USERNAME = "RamiLevi"
 
 
 class Settings(BaseSettings):
@@ -36,6 +42,13 @@ class Settings(BaseSettings):
     FIREBASE_JWKS_URL: str = DEFAULT_FIREBASE_JWKS_URL
     # Where an address entered in the app is located. Free, with no key and no account.
     NOMINATIM_URL: str = DEFAULT_NOMINATIM_URL
+    # Price-file ingestion (Epic 3): where each chain publishes, and how often the worker looks.
+    SHUFERSAL_PRICES_URL: str = DEFAULT_SHUFERSAL_PRICES_URL
+    CERBERUS_URL: str = DEFAULT_CERBERUS_URL
+    CARREFOUR_PRICES_URL: str = DEFAULT_CARREFOUR_PRICES_URL
+    CERBERUS_RAMI_LEVY_USERNAME: str = DEFAULT_CERBERUS_RAMI_LEVY_USERNAME
+    # Every chain is ingested at least this often (at most every 6 hours).
+    INGEST_INTERVAL_HOURS: int = Field(default=6, ge=1, le=6)
 
     @model_validator(mode="after")
     def _no_dev_db_in_prod(self) -> Self:

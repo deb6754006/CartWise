@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fictional: invented items and prices, in the shape of a PriceFull file. -->
+<Root>
+  <ChainId>7290027600007</ChainId>
+  <StoreId>5</StoreId>
+  <Items Count="3">
+    <Item>
+      <ItemCode>1000000000001</ItemCode>
+      <ItemName>חלב בדוי 3%</ItemName>
+      <ItemPrice>6.90</ItemPrice>
+    </Item>
+    <Item>
+      <ItemCode>1000000000002</ItemCode>
+      <ItemName>לחם דמיוני</ItemName>
+      <ItemPrice>9.50</ItemPrice>
+    </Item>
+    <Item>
+      <ItemCode>1000000000003</ItemCode>
+      <ItemName>גבינה מומצאת</ItemName>
+      <ItemPrice>12.00</ItemPrice>
+    </Item>
+  </Items>
+</Root>

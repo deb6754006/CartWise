@@ -84,6 +84,16 @@ def ensure_chain_with_club(session: Session, chain_name: str, club_name: str) ->
     return repository.ensure_club(session, chain_id, unicodedata.normalize("NFC", club_name))
 
 
+def ensure_chain(session: Session, gov_chain_code: str, name: str) -> uuid.UUID:
+    """Make sure the chain with this government chain code exists. Idempotent. Returns its id.
+
+    An existing chain keeps its name. Does not commit: the caller owns the transaction.
+    """
+    return repository.ensure_chain_by_code(
+        session, gov_chain_code.strip(), unicodedata.normalize("NFC", name)
+    )
+
+
 def search_brands(session: Session, query: str) -> list[BrandRef]:
     """Up to 20 brands matching query anywhere in their name. Too short a query matches nothing."""
     normalized = normalize_he(query)

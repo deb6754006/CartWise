@@ -1,0 +1,32 @@
+{
+  "sEcho": 1,
+  "iTotalRecords": 4,
+  "iTotalDisplayRecords": 4,
+  "aaData": [
+    {
+      "fname": "Stores7290058140886-000-202611030200.xml",
+      "size": 2048,
+      "time": "2026-11-03T02:00:00"
+    },
+    {
+      "fname": "PriceFull7290058140886-001-202611030010.gz",
+      "size": 4096,
+      "time": "2026-11-03T00:10:00"
+    },
+    {
+      "fname": "PromoFull7290058140886-001-202611030010.gz",
+      "size": 1024,
+      "time": "2026-11-03T00:10:00"
+    },
+    {
+      "fname": "Promo7290058140886-001-202611030900.gz",
+      "size": 512,
+      "time": "2026-11-03T09:00:00"
+    },
+    {
+      "fname": "NotAPriceFile.txt",
+      "size": 1,
+      "time": "2026-11-03T09:00:00"
+    }
+  ]
+}

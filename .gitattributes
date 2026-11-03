@@ -21,6 +21,8 @@
 *.jks binary
 *.p12 binary
 *.heic binary
+# UTF-16 test fixtures (the chains' Stores files): kept byte for byte.
+*.utf16.xml binary
 
 # Windows scripts need CRLF.
 *.bat text eol=crlf

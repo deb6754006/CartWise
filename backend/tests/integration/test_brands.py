@@ -48,7 +48,10 @@ def engine(brands_url: str) -> Iterator[Engine]:
 def factory(engine: Engine) -> sessionmaker[Session]:
     with engine.begin() as conn:
         conn.execute(
-            text("TRUNCATE user_brands, brands, user_clubs, clubs, chains, devices, users")
+            text(
+                "TRUNCATE ingestion_files, ingestion_runs, user_brands, brands, user_clubs, clubs, "
+                "chains, devices, users"
+            )
         )
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 

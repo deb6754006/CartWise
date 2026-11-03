@@ -43,6 +43,19 @@ def ensure_chain(session: Session, name: str) -> uuid.UUID:
     return chain_id
 
 
+def ensure_chain_by_code(session: Session, gov_chain_code: str, name: str) -> uuid.UUID:
+    """The chain with this government code, inserted (with name) if missing. Safe against a
+    concurrent insert of the same code: gov_chain_code is unique."""
+    session.execute(
+        insert(Chain)
+        .values(id=new_id(), name=name, gov_chain_code=gov_chain_code)
+        .on_conflict_do_nothing(index_elements=[Chain.gov_chain_code])
+    )
+    return session.execute(
+        select(Chain.id).where(Chain.gov_chain_code == gov_chain_code)
+    ).scalar_one()
+
+
 def ensure_club(session: Session, chain_id: uuid.UUID, name: str) -> uuid.UUID:
     session.execute(
         insert(Club)

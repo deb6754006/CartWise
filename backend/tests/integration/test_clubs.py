@@ -46,7 +46,12 @@ def engine(clubs_url: str) -> Iterator[Engine]:
 @pytest.fixture
 def factory(engine: Engine) -> sessionmaker[Session]:
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE user_clubs, clubs, chains, devices, users"))
+        conn.execute(
+            text(
+                "TRUNCATE ingestion_files, ingestion_runs, user_clubs, clubs, chains, "
+                "devices, users"
+            )
+        )
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

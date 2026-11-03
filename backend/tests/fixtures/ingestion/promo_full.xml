@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Fictional: invented promotions, in the shape of a PromoFull file. -->
+<Root>
+  <ChainId>7290027600007</ChainId>
+  <StoreId>5</StoreId>
+  <Promotions Count="2">
+    <Promotion>
+      <PromotionId>1</PromotionId>
+      <PromotionDescription>2 ב-10</PromotionDescription>
+      <ClubID>0 - כלל הלקוחות</ClubID>
+      <PromotionItems Count="2">
+        <Item><ItemCode>1000000000001</ItemCode></Item>
+        <Item><ItemCode>1000000000002</ItemCode></Item>
+      </PromotionItems>
+    </Promotion>
+    <Promotion>
+      <PromotionId>2</PromotionId>
+      <PromotionDescription>מבצע מועדון בדוי</PromotionDescription>
+      <ClubID>2 - מועדון בדוי</ClubID>
+      <PromotionItems Count="1">
+        <Item><ItemCode>1000000000003</ItemCode></Item>
+      </PromotionItems>
+    </Promotion>
+  </Promotions>
+</Root>
