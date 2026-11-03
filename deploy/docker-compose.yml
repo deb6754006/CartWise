@@ -34,6 +34,27 @@ services:
     ports:
       - "8000:8000"
 
+  # Scheduled jobs (APScheduler): the api's image and code, another command.
+  # The api runs the migrations; the worker starts once it is up.
+  worker:
+    build:
+      context: ../backend
+      secrets:
+        - extra_ca
+    command: ["python", "-m", "app.worker.main"]
+    # Back up after a crash, or purge stops silently. init: a real PID 1, so SIGTERM stops it.
+    restart: unless-stopped
+    init: true
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+psycopg://cartwise:cartwise@db:5432/cartwise
+      ENV: dev
+      LOG_LEVEL: INFO
+
 volumes:
   db-data:
 

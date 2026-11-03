@@ -69,7 +69,11 @@ export interface paths {
         get: operations["me_v1_me_get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Me
+         * @description Delete this registered account now (FR-6). Its row is purged 30 days later.
+         */
+        delete: operations["delete_me_v1_me_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -507,6 +511,31 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MeOut"];
                 };
+            };
+        };
+    };
+    delete_me_v1_me_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A guest (device token): account_required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

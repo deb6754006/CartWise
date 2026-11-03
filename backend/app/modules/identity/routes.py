@@ -72,6 +72,21 @@ def me(subject: Annotated[Subject, Depends(require_subject)]) -> MeOut:
     return MeOut(kind=subject.kind, id=uuid.UUID(subject.id))
 
 
+@router.delete(
+    "/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={403: {"description": "A guest (device token): account_required"}},
+)
+def delete_me(
+    subject: Annotated[Subject, Depends(require_subject)],
+    session: Annotated[Session, Depends(get_session)],
+) -> None:
+    """Delete this registered account now (FR-6). Its row is purged 30 days later."""
+    if subject.kind != "user":
+        raise service.account_required()
+    service.delete_account(session, _subject_uuid(subject))
+
+
 def _subject_uuid(subject: Subject) -> uuid.UUID:
     if subject.id is None:
         raise auth_required()

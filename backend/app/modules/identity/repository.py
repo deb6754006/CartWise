@@ -2,8 +2,9 @@
 
 import uuid
 from collections.abc import Collection
+from datetime import datetime
 
-from sqlalchemy import Boolean, Uuid, delete, func, literal, literal_column, select
+from sqlalchemy import Boolean, Uuid, delete, func, literal, literal_column, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -56,6 +57,58 @@ def get_or_create_user(session: Session, firebase_uid: str) -> tuple[User, bool]
     ).first()
     user = session.execute(select(User).where(User.firebase_uid == firebase_uid)).scalar_one()
     return user, inserted is not None
+
+
+def lock_user(session: Session, user_id: uuid.UUID, *, shared: bool = False) -> User | None:
+    """The user row, freshly read and locked until the transaction ends.
+
+    shared (FOR SHARE) lets concurrent links of one user run together, and still waits for
+    (and then sees) an account deletion of that user, which takes the row FOR UPDATE.
+    """
+    return session.execute(
+        select(User)
+        .where(User.id == user_id)
+        .with_for_update(read=shared)
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+
+
+def soft_delete_user(session: Session, user_id: uuid.UUID, anonymous_uid: str) -> None:
+    """Mark the user deleted, and replace firebase_uid so the Google account is free again."""
+    session.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(deleted_at=func.now(), firebase_uid=anonymous_uid)
+    )
+
+
+def unlink_devices(session: Session, user_id: uuid.UUID) -> None:
+    session.execute(update(Device).where(Device.user_id == user_id).values(user_id=None))
+
+
+def user_ids_deleted_before(session: Session, cutoff: datetime) -> list[uuid.UUID]:
+    stmt = (
+        select(User.id)
+        .where(User.deleted_at.is_not(None), User.deleted_at < cutoff)
+        .order_by(User.deleted_at, User.id)
+    )
+    return list(session.execute(stmt).scalars())
+
+
+def lock_user_deleted_before(
+    session: Session, user_id: uuid.UUID, cutoff: datetime
+) -> uuid.UUID | None:
+    """Lock the user if it is (still) deleted before cutoff. SKIP LOCKED: a row another purge
+    holds is left to it, so two purges never run the hooks of one user together."""
+    return session.execute(
+        select(User.id)
+        .where(User.id == user_id, User.deleted_at.is_not(None), User.deleted_at < cutoff)
+        .with_for_update(skip_locked=True)
+    ).scalar_one_or_none()
+
+
+def delete_user(session: Session, user_id: uuid.UUID) -> None:
+    session.execute(delete(User).where(User.id == user_id))
 
 
 def lock_device(session: Session, device_id: uuid.UUID) -> Device | None:
@@ -112,6 +165,11 @@ def move_user_clubs(session: Session, from_subject: uuid.UUID, to_subject: uuid.
     session.execute(delete(UserClub).where(UserClub.subject_id == from_subject))
 
 
+def delete_user_clubs(session: Session, subject_id: uuid.UUID) -> None:
+    _lock_subject_clubs(session, subject_id)
+    session.execute(delete(UserClub).where(UserClub.subject_id == subject_id))
+
+
 def brand_ids_for_subject(session: Session, subject_id: uuid.UUID) -> list[uuid.UUID]:
     stmt = (
         select(UserBrand.brand_id)
@@ -155,6 +213,11 @@ def move_user_brands(session: Session, from_subject: uuid.UUID, to_subject: uuid
         .on_conflict_do_nothing()
     )
     session.execute(delete(UserBrand).where(UserBrand.subject_id == from_subject))
+
+
+def delete_user_brands(session: Session, subject_id: uuid.UUID) -> None:
+    _lock_subject_brands(session, subject_id)
+    session.execute(delete(UserBrand).where(UserBrand.subject_id == subject_id))
 
 
 def prefs_for_subject(session: Session, subject_id: uuid.UUID) -> UserPrefs | None:
@@ -202,3 +265,8 @@ def move_user_prefs(session: Session, from_subject: uuid.UUID, to_subject: uuid.
         .values(subject_id=to_subject, default_mode=moved[0], default_minutes=moved[1])
         .on_conflict_do_nothing(index_elements=[UserPrefs.subject_id])
     )
+
+
+def delete_user_prefs(session: Session, subject_id: uuid.UUID) -> None:
+    _lock_subject_prefs(session, subject_id)
+    session.execute(delete(UserPrefs).where(UserPrefs.subject_id == subject_id))

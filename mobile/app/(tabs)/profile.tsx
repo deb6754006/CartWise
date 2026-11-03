@@ -1,9 +1,16 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { t } from '../../src/i18n';
+import {
+  deleteAccount,
+  getCachedSession,
+  loadSession,
+  onSessionChange,
+  type Session,
+} from '../../src/identity/session';
 import { loadBrands } from '../../src/profile/useBrands';
 import { loadClubs } from '../../src/profile/useClubs';
 import { loadRange, type Range } from '../../src/profile/useRange';
@@ -74,12 +81,105 @@ function ValueRow({
   );
 }
 
-/** SCR-PROFILE. So far, the comparison rows: the others come with their own stories. */
+/** The signed-in session, kept in step with sign-in and sign-out. null: a guest. */
+function useSession(): Session | null {
+  const [session, setSession] = useState<Session | null>(() => getCachedSession() ?? null);
+  useEffect(() => {
+    let current = true;
+    const unsubscribe = onSessionChange((s) => setSession(s));
+    loadSession().then(
+      (s) => {
+        if (current) setSession(s);
+      },
+      () => {},
+    );
+    return () => {
+      current = false;
+      unsubscribe();
+    };
+  }, []);
+  return session;
+}
+
+type Notice = 'deleted' | 'deleteFailed';
+
+/**
+ * "Account and privacy": for now only "delete account", and only for a signed-in user.
+ * The press asks first (what is deleted and what is kept); a cancel sends nothing.
+ */
+function AccountSection({ onNotice }: { onNotice: (notice: Notice | null) => void }) {
+  const session = useSession();
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const previousSession = useRef(session);
+
+  // Signed in (again): an old "account deleted" notice no longer applies.
+  useEffect(() => {
+    if (session && !previousSession.current) onNotice(null);
+    previousSession.current = session;
+  }, [session, onNotice]);
+
+  const runDelete = useCallback(async () => {
+    if (busyRef.current) return; // a second confirm: still one request
+    busyRef.current = true;
+    setBusy(true);
+    onNotice(null);
+    let deleted = false;
+    try {
+      deleted = (await deleteAccount()).status === 'deleted';
+    } catch {
+      // deleteAccount never throws; if it does, it is a failure, and the row is usable again.
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+    onNotice(deleted ? 'deleted' : 'deleteFailed');
+  }, [onNotice]);
+
+  const confirm = () => {
+    if (busyRef.current) return;
+    Alert.alert(t('profile.deleteAccount.confirmTitle'), t('profile.deleteAccount.confirmBody'), [
+      { text: t('profile.deleteAccount.cancel'), style: 'cancel' },
+      {
+        text: t('profile.deleteAccount.confirm'),
+        style: 'destructive',
+        onPress: () => {
+          runDelete().catch(() => {});
+        },
+      },
+    ]);
+  };
+
+  if (!session) return null;
+  return (
+    <>
+      <Text style={styles.section}>{t('profile.account')}</Text>
+      <View style={styles.card}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('profile.deleteAccount.row')}
+          accessibilityState={{ disabled: busy, busy }}
+          disabled={busy}
+          onPress={confirm}
+          style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+        >
+          <Text style={[styles.rowLabel, styles.danger]}>
+            {busy ? t('profile.deleteAccount.deleting') : t('profile.deleteAccount.row')}
+          </Text>
+          <Text style={styles.rowValue}>{t('nav.forwardArrow')}</Text>
+        </Pressable>
+      </View>
+    </>
+  );
+}
+
+/** SCR-PROFILE: the comparison rows, and the account row for a signed-in user. */
 export default function ProfileScreen() {
   const router = useRouter();
   const clubCount = useValueOnFocus(countClubs);
   const brandCount = useValueOnFocus(countBrands);
   const range = useValueOnFocus(loadRange);
+  const [notice, setNotice] = useState<Notice | null>(null);
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
@@ -107,6 +207,16 @@ export default function ProfileScreen() {
           onPress={() => router.push('/range', { dangerouslySingular: true })}
         />
       </View>
+      <AccountSection onNotice={setNotice} />
+      {notice !== null && (
+        <Text
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+          style={[styles.notice, notice === 'deleteFailed' && styles.danger]}
+        >
+          {t(`profile.deleteAccount.${notice}`)}
+        </Text>
+      )}
     </SafeAreaView>
   );
 }
@@ -160,5 +270,13 @@ const styles = StyleSheet.create({
   rowValue: {
     ...typography.meta,
     color: colors.inkSecondary,
+  },
+  danger: {
+    color: colors.errorInk,
+  },
+  notice: {
+    ...typography.meta,
+    color: colors.inkSecondary,
+    marginTop: spacing[2],
   },
 });

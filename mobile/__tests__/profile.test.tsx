@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 import { act, fireEvent, renderRouter, screen } from 'expo-router/testing-library';
+import { Alert, type AlertButton } from 'react-native';
 
 import ProfileScreen from '../app/(tabs)/profile';
 import { SEARCH_DEBOUNCE_MS } from '../src/profile/useBrands';
@@ -78,6 +79,27 @@ jest.mock('../src/api/client', () => ({
     },
   },
 }));
+
+// The session: a guest unless a test signs in. deleteAccount is controlled per test.
+type MockSession = { userId: string; firstName: string | null } | null;
+const mockSession: { value: MockSession; listeners: Set<(s: MockSession) => void> } = {
+  value: null,
+  listeners: new Set(),
+};
+const mockDeleteAccount = jest.fn<Promise<{ status: 'deleted' | 'failed' }>, []>();
+jest.mock('../src/identity/session', () => ({
+  getCachedSession: () => mockSession.value,
+  loadSession: async () => mockSession.value,
+  onSessionChange: (fn: (s: MockSession) => void) => {
+    mockSession.listeners.add(fn);
+    return () => mockSession.listeners.delete(fn);
+  },
+  deleteAccount: () => mockDeleteAccount(),
+}));
+function mockSetSession(value: MockSession) {
+  mockSession.value = value;
+  for (const fn of mockSession.listeners) fn(value);
+}
 
 // With as many chosen as this by default, the brands' count is never mistaken for the clubs'.
 const mockBrands = Array.from({ length: 9 }, (_, i) => ({ id: `brand-${i}`, name: `מותג ${i}` }));
@@ -320,5 +342,178 @@ describe('SCR-PROFILE', () => {
     await act(async () => fireEvent.press(screen.getByRole('button', { name: 'חזרה' })));
     expect(row('המועדונים שלי')).toBeTruthy();
     expect(screen.queryByText('1 ←')).toBeNull();
+  });
+});
+
+describe('SCR-PROFILE: account deletion', () => {
+  let alertSpy: jest.SpyInstance;
+  const SIGNED_IN = { userId: 'u1', firstName: 'דנה' };
+
+  beforeEach(() => {
+    mockServer.clubs = CLUBS;
+    mockServer.marks = [];
+    mockServer.brands = [];
+    mockServer.range = { default_mode: 'car', default_minutes: 15 };
+    mockServer.fail = false;
+    mockServer.brandsFail = false;
+    mockServer.rangeFail = false;
+    mockServer.hold = null;
+    mockSession.value = SIGNED_IN;
+    mockSession.listeners.clear();
+    mockDeleteAccount.mockReset().mockImplementation(async () => {
+      mockSetSession(null); // what signOut does
+      return { status: 'deleted' };
+    });
+    alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    alertSpy.mockRestore();
+    mockSession.value = null;
+  });
+
+  /** The buttons of the last confirmation shown. */
+  const alertButtons = (): AlertButton[] => alertSpy.mock.calls.at(-1)[2];
+  const pressAlert = async (text: string) => {
+    const button = alertButtons().find((b) => b.text === text);
+    await act(async () => button?.onPress?.());
+  };
+  const deleteRow = () => screen.queryByRole('button', { name: 'מחיקת חשבון' });
+
+  it('a guest has no account section and no delete row', async () => {
+    mockSession.value = null;
+    await renderApp();
+    expect(screen.queryByText('חשבון ופרטיות')).toBeNull();
+    expect(deleteRow()).toBeNull();
+  });
+
+  it('a signed-in user has the row, in the error color, after the comparison rows', async () => {
+    await renderApp();
+    expect(screen.getByText('חשבון ופרטיות')).toBeTruthy();
+    expect(screen.getByText('מחיקת חשבון')).toHaveStyle({ color: '#B91C1C' });
+    const rows = screen.getAllByRole('button').map((r) => r.props.accessibilityLabel);
+    expect(rows.at(-1)).toBe('מחיקת חשבון');
+    expect(rows).toHaveLength(4); // no sign-out row, nothing else
+  });
+
+  it('the press asks first, explaining what is deleted and what is kept', async () => {
+    await renderApp();
+    await act(async () => fireEvent.press(deleteRow()!));
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+    const [title, body] = alertSpy.mock.calls[0];
+    expect(title).toBe('למחוק את החשבון?');
+    expect(body).toContain('30 יום');
+    expect(body).toContain('יישארו');
+    expect(alertButtons().map((b) => [b.text, b.style])).toEqual([
+      ['ביטול', 'cancel'],
+      ['מחיקה', 'destructive'],
+    ]);
+    expect(mockDeleteAccount).not.toHaveBeenCalled();
+  });
+
+  it('cancel: no request and no change', async () => {
+    await renderApp();
+    await act(async () => fireEvent.press(deleteRow()!));
+    await pressAlert('ביטול');
+    expect(mockDeleteAccount).not.toHaveBeenCalled();
+    expect(deleteRow()).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('confirm and 204: "account deleted", and the row is gone', async () => {
+    await renderApp();
+    await act(async () => fireEvent.press(deleteRow()!));
+    await pressAlert('מחיקה');
+    expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'החשבון נמחק. אפשר להמשיך להשתמש באפליקציה כאורח',
+    );
+    expect(deleteRow()).toBeNull();
+    expect(screen.queryByText('חשבון ופרטיות')).toBeNull();
+    // The comparison rows are still there, for the guest.
+    expect(row('המועדונים שלי: 0')).toBeTruthy();
+  });
+
+  it('server failed: "try again", and still signed in', async () => {
+    mockDeleteAccount.mockResolvedValue({ status: 'failed' });
+    await renderApp();
+    await act(async () => fireEvent.press(deleteRow()!));
+    await pressAlert('מחיקה');
+    expect(screen.getByRole('alert')).toHaveTextContent('לא הצלחנו למחוק את החשבון. נסו שוב');
+    expect(deleteRow()).toBeTruthy();
+
+    // Another try may succeed.
+    mockDeleteAccount.mockImplementation(async () => {
+      mockSetSession(null);
+      return { status: 'deleted' };
+    });
+    await act(async () => fireEvent.press(deleteRow()!));
+    await pressAlert('מחיקה');
+    expect(screen.getByRole('alert')).toHaveTextContent(/^החשבון נמחק/);
+    expect(mockDeleteAccount).toHaveBeenCalledTimes(2);
+  });
+
+  it('confirm twice: one request, and the row is busy meanwhile', async () => {
+    let finish!: () => void;
+    mockDeleteAccount.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () => {
+            mockSetSession(null);
+            resolve({ status: 'deleted' });
+          };
+        }),
+    );
+    await renderApp();
+    await act(async () => fireEvent.press(deleteRow()!));
+    const confirm = alertButtons().find((b) => b.text === 'מחיקה')!;
+    await act(async () => {
+      confirm.onPress?.();
+      confirm.onPress?.();
+    });
+    expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('מוחקים את החשבון...')).toBeTruthy();
+    expect(deleteRow()).toBeDisabled();
+
+    // A press on the busy row asks nothing.
+    await act(async () => fireEvent.press(deleteRow()!));
+    expect(alertSpy).toHaveBeenCalledTimes(1);
+
+    await act(async () => finish());
+    expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('alert')).toHaveTextContent(/^החשבון נמחק/);
+  });
+
+  it('signing in while on the screen shows the row', async () => {
+    mockSession.value = null;
+    await renderApp();
+    expect(deleteRow()).toBeNull();
+    await act(async () => mockSetSession(SIGNED_IN));
+    expect(deleteRow()).toBeTruthy();
+  });
+
+  it('deleteAccount rejects: the row is usable again, with "try again"', async () => {
+    mockDeleteAccount.mockRejectedValue(new Error('unexpected'));
+    await renderApp();
+    await act(async () => fireEvent.press(deleteRow()!));
+    await pressAlert('מחיקה');
+    expect(deleteRow()).not.toBeDisabled();
+    expect(screen.getByText('מחיקת חשבון')).toBeTruthy(); // not "deleting..."
+    expect(screen.getByRole('alert')).toHaveTextContent('לא הצלחנו למחוק את החשבון. נסו שוב');
+
+    // It can be pressed again.
+    await act(async () => fireEvent.press(deleteRow()!));
+    expect(alertSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('signing in again after a delete clears the "account deleted" notice', async () => {
+    await renderApp();
+    await act(async () => fireEvent.press(deleteRow()!));
+    await pressAlert('מחיקה');
+    expect(screen.getByRole('alert')).toHaveTextContent(/^החשבון נמחק/);
+
+    await act(async () => mockSetSession(SIGNED_IN));
+    expect(deleteRow()).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

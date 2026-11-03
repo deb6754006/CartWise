@@ -153,6 +153,22 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "identity"
+        ],
+        "summary": "Delete Me",
+        "description": "Delete this registered account now (FR-6). Its row is purged 30 days later.",
+        "operationId": "delete_me_v1_me_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "A guest (device token): account_required"
+          }
+        }
       }
     },
     "/v1/me/clubs": {

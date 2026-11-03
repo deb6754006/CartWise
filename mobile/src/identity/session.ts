@@ -12,6 +12,8 @@ import { ensureDeviceToken } from './device';
 export const SESSION_KEY = 'cartwise.session';
 /** Give up on the link request after this long. */
 export const LINK_TIMEOUT_MS = 15_000;
+/** Give up on the account deletion request after this long. */
+export const DELETE_TIMEOUT_MS = 15_000;
 
 export type Session = { userId: string; firstName: string | null };
 
@@ -22,6 +24,8 @@ export type SignInResult =
   /** `code`: the server's error code (e.g. device_already_linked), or 'network' / 'google'. */
   | { status: 'error'; code: string };
 
+export type DeleteAccountResult = { status: 'deleted' } | { status: 'failed' };
+
 type GoogleSigninModule = typeof import('@react-native-google-signin/google-signin');
 type FirebaseAuthModule = typeof import('@react-native-firebase/auth');
 type Native = { google: GoogleSigninModule; auth: FirebaseAuthModule };
@@ -31,7 +35,8 @@ let configuredClientId: string | null = null;
 let cached: Session | null | undefined; // undefined: not read from secure-store yet
 const listeners = new Set<(s: Session | null) => void>();
 
-// No auth middleware here: the link request carries the Firebase ID token, set explicitly.
+// No auth middleware here: the link and delete requests carry the Firebase ID token, set
+// explicitly (the middleware would fall back to the device token, never wanted here).
 const linkClient = createClient<paths>({
   baseUrl: API_URL,
   fetch: (request) => globalThis.fetch(request),
@@ -115,7 +120,8 @@ export async function isSignedIn(): Promise<boolean> {
 async function nativeSignOut(n: Native): Promise<void> {
   await Promise.allSettled([
     n.google.GoogleSignin.signOut(),
-    n.auth.signOut(n.auth.getAuth()),
+    // Deferred, so a getAuth() that throws is a rejection here, not an exception out of signOut.
+    Promise.resolve().then(() => n.auth.signOut(n.auth.getAuth())),
   ]);
 }
 
@@ -263,4 +269,102 @@ export async function signInWithGoogle(): Promise<SignInResult> {
   }
   notify(session);
   return { status: 'success', session };
+}
+
+let deleting: Promise<DeleteAccountResult> | null = null;
+
+/**
+ * Story 1.7 (FR-6): DELETE /v1/me, then delete the Firebase user, then signOut.
+ * - The server deletes the account: a 204, or a 401 not_linked (it was already deleted, and
+ *   the answer was lost). Anything else (an error, a timeout, no network, no ID token) is
+ *   `failed`, and the session is kept.
+ * - Then the Firebase user (it holds the email) is deleted from here: there is no Admin SDK.
+ *   When Firebase wants a recent sign-in, Google signs in again and the delete is retried.
+ *   A failure or a cancel there does not undo the deletion on the server: it is skipped.
+ * - Then signOut: the session and the first name are removed from this device, and the app
+ *   goes on as a guest.
+ * A second call while one runs gets the same promise (one request). Never throws.
+ */
+export function deleteAccount(): Promise<DeleteAccountResult> {
+  if (!deleting) {
+    deleting = runDeleteAccount().finally(() => {
+      deleting = null;
+    });
+  }
+  return deleting;
+}
+
+async function runDeleteAccount(): Promise<DeleteAccountResult> {
+  let token = await getUserIdToken().catch(() => null);
+  if (!token) return { status: 'failed' };
+  let status = await sendDelete(token);
+  if (status === 'invalid_token') {
+    // E.g. the token expired in flight: one forced refresh, one retry.
+    token = await getUserIdToken(true).catch(() => null);
+    status = token ? await sendDelete(token) : 'failed';
+  }
+  if (status !== 'deleted') return { status: 'failed' };
+
+  const n = loadNative();
+  if (n) await deleteFirebaseUser(n);
+  await signOut().catch(() => {});
+  return { status: 'deleted' };
+}
+
+async function sendDelete(idToken: string): Promise<'deleted' | 'invalid_token' | 'failed'> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DELETE_TIMEOUT_MS);
+  try {
+    const { response, error } = await linkClient.DELETE('/v1/me', {
+      headers: { Authorization: `Bearer ${idToken}` },
+      signal: controller.signal,
+    });
+    if (response.status === 204) return 'deleted';
+    const code = (error as { error?: { code?: unknown } } | undefined)?.error?.code;
+    if (response.status === 401 && code === 'invalid_token') return 'invalid_token';
+    // The account no longer exists on the server: a delete that was committed but whose answer
+    // was lost (timeout, network, a crash before signOut). Finish the deletion here.
+    if (response.status === 401 && code === 'not_linked') return 'deleted';
+    return 'failed';
+  } catch (err) {
+    warn('deleting the account failed', err);
+    return 'failed';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Delete the Firebase user, signing in with Google again when Firebase asks. Never throws. */
+async function deleteFirebaseUser(n: Native): Promise<void> {
+  let user: ReturnType<FirebaseAuthModule['getAuth']>['currentUser'];
+  try {
+    user = n.auth.getAuth().currentUser;
+  } catch (err) {
+    warn('reading the Firebase user failed', err);
+    return;
+  }
+  if (!user) return;
+  try {
+    await n.auth.deleteUser(user);
+    return;
+  } catch (err) {
+    if ((err as { code?: unknown } | null)?.code !== 'auth/requires-recent-login') {
+      warn('deleting the Firebase user failed', err);
+      return;
+    }
+  }
+  try {
+    const clientId = webClientId();
+    if (configuredClientId !== clientId) {
+      n.google.GoogleSignin.configure({ webClientId: clientId });
+      configuredClientId = clientId;
+    }
+    const response = await n.google.GoogleSignin.signIn();
+    if (n.google.isCancelledResponse(response) || !response.data.idToken) return;
+    const credential = n.auth.GoogleAuthProvider.credential(response.data.idToken);
+    await n.auth.reauthenticateWithCredential(user, credential);
+    await n.auth.deleteUser(user);
+  } catch (err) {
+    if (!isCancel(n, err)) warn('deleting the Firebase user after a new sign-in failed', err);
+  }
 }
