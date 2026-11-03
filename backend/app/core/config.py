@@ -6,7 +6,7 @@ Defaults are for local dev only.
 from functools import lru_cache
 from typing import Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEV_DATABASE_URL = "postgresql+psycopg://cartwise:cartwise@localhost:5432/cartwise"
@@ -28,7 +28,8 @@ DEFAULT_CERBERUS_RAMI_LEVY_USERNAME = "RamiLevi"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
+    # An empty variable (compose passes ${VAR:-} when it is not set) means the default.
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore", env_ignore_empty=True)
 
     DATABASE_URL: str = DEV_DATABASE_URL
     ENV: Literal["dev", "test", "prod"] = "dev"
@@ -49,6 +50,27 @@ class Settings(BaseSettings):
     CERBERUS_RAMI_LEVY_USERNAME: str = DEFAULT_CERBERUS_RAMI_LEVY_USERNAME
     # Every chain is ingested at least this often (at most every 6 hours).
     INGEST_INTERVAL_HOURS: int = Field(default=6, ge=1, le=6)
+    # Ingestion health (Story 3.5): when the operator is alerted, and how often again.
+    INGEST_STALE_HOURS: int = Field(default=24, ge=1, le=168)
+    INGEST_RECORD_DROP_PCT: int = Field(default=30, ge=1, le=99)
+    INGEST_FILE_ERROR_PCT: int = Field(default=5, ge=1, le=99)
+    INGEST_ALERT_REPEAT_HOURS: int = Field(default=24, ge=1, le=168)
+    # Alert e-mail (optional): sent only when host, user, password, from and to are all set.
+    # The password lives only in the server's .env, never in the repo.
+    ALERT_SMTP_HOST: str = ""
+    ALERT_SMTP_PORT: int = Field(default=587, ge=1, le=65535)
+    ALERT_SMTP_USER: str = ""
+    ALERT_SMTP_PASSWORD: SecretStr = SecretStr("")
+    ALERT_EMAIL_FROM: str = ""
+    # One address, or several separated by commas.
+    ALERT_EMAIL_TO: str = ""
+
+    @model_validator(mode="after")
+    def _stale_after_the_interval(self) -> Self:
+        # Otherwise a chain ingested on schedule would be stale between two runs, for ever.
+        if self.INGEST_STALE_HOURS <= self.INGEST_INTERVAL_HOURS:
+            raise ValueError("INGEST_STALE_HOURS must be greater than INGEST_INTERVAL_HOURS")
+        return self
 
     @model_validator(mode="after")
     def _no_dev_db_in_prod(self) -> Self:

@@ -8,7 +8,8 @@ rolled back and recorded as failed, and the run goes on to the next one.
 The handlers write what is in the files: the Stores handler writes the chain's stores and their
 locations (Story 3.3, ingestion.stores), and the PriceFull and PromoFull handlers a store's
 products, price observations and promotions (Story 3.4, ingestion.prices). After each run, the
-current prices (pricing's materialized view) are refreshed.
+current prices (pricing's materialized view) are refreshed, and the run's health is checked
+(Story 3.5, ingestion.health): a drop in records or too many failed files alerts the operator.
 
 A file URL can carry a signature, so URLs are never logged, and are removed from stored errors.
 """
@@ -16,7 +17,7 @@ A file URL can carry a signature, so URLs are never logged, and are removed from
 import hashlib
 import logging
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -25,9 +26,10 @@ from xml.etree.ElementTree import Element
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.modules.catalog import service as catalog_service
 from app.modules.geo.service import Geocoder
-from app.modules.ingestion import repository
+from app.modules.ingestion import health, repository
 from app.modules.ingestion.adapters import (
     MAX_DOWNLOAD_BYTES,
     ChainAdapter,
@@ -36,6 +38,7 @@ from app.modules.ingestion.adapters import (
     latest_per_store,
     redact_urls,
 )
+from app.modules.ingestion.alerts import AlertSink, build_alert_sinks
 from app.modules.ingestion.decode import decode_xml
 from app.modules.ingestion.models import FileKind, RunStatus
 from app.modules.ingestion.prices import SOURCE_REF_ATTRIBUTE, price_handler, promo_handler
@@ -82,6 +85,11 @@ def error_text(exc: BaseException) -> str:
     message = redact_urls(str(exc))
     full = f"{type(exc).__name__}: {message}" if message else type(exc).__name__
     return full[:MAX_ERROR_LENGTH]
+
+
+def series_key(file: RemoteFile) -> str:
+    """The series a file belongs to: the files of one kind and store follow one another."""
+    return f"{file.kind}:{file.store_code or '-'}"
 
 
 def _utcnow() -> datetime:
@@ -134,6 +142,7 @@ def _ingest_file(
                 records=records,
                 error=None,
                 now=now(),
+                series_key=series_key(file),
             )
             session.commit()
         return "ingested", records
@@ -156,6 +165,7 @@ def _ingest_file(
                 records=0,
                 error=error_text(exc),
                 now=now(),
+                series_key=series_key(file),
             )
             session.commit()
         return "failed", 0
@@ -174,11 +184,32 @@ def _refresh_current_prices(session_factory: Callable[[], Session], chain_key: s
         )
 
 
+def _evaluate_health(
+    session_factory: Callable[[], Session],
+    run_id: uuid.UUID,
+    chain_key: str,
+    sinks: Sequence[AlertSink] | None,
+    now: Clock,
+) -> None:
+    """After every run. A failure is logged and leaves the run as it is."""
+    try:
+        settings = get_settings()
+        chosen = sinks if sinks is not None else build_alert_sinks(settings)
+        with session_factory() as session:
+            health.evaluate_run(session, run_id, chosen, settings, now())
+            session.commit()
+    except Exception as exc:
+        logger.warning(
+            "ingestion_health_failed", extra={"chain": chain_key, "error": type(exc).__name__}
+        )
+
+
 def _run(
     session_factory: Callable[[], Session],
     adapter: ChainAdapter,
     handlers: Mapping[FileKind, Handler],
     now: Clock,
+    alert_sinks: Sequence[AlertSink] | None = None,
 ) -> RunSummary:
     """One run, under the chain's lock."""
     with session_factory() as session:
@@ -234,6 +265,7 @@ def _run(
         session.commit()
     if counts["ingested"]:
         _refresh_current_prices(session_factory, adapter.key)
+    _evaluate_health(session_factory, run_id, adapter.key, alert_sinks, now)
 
     summary = RunSummary(
         run_id=run_id,
@@ -267,8 +299,10 @@ def ingest_chain(
     adapter: ChainAdapter,
     handlers: Mapping[FileKind, Handler] = DEFAULT_HANDLERS,
     now: Clock = _utcnow,
+    alert_sinks: Sequence[AlertSink] | None = None,
 ) -> RunSummary | None:
     """One run of one chain. None, with no run row, if a run of the chain is already going on.
+    Alerts about the run go to alert_sinks (None: the ones the settings configure).
 
     The lock is a Postgres advisory lock, held for the whole run on a connection of its own (not
     one of the files' sessions), in autocommit so it holds no transaction open.
@@ -283,7 +317,7 @@ def ingest_chain(
             logger.info("ingestion_run_locked", extra={"chain": adapter.key})
             return None
         try:
-            return _run(session_factory, adapter, handlers, now)
+            return _run(session_factory, adapter, handlers, now, alert_sinks)
         finally:
             try:
                 repository.unlock(lock_conn, adapter.gov_chain_code)

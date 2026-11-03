@@ -11,15 +11,17 @@ import app.modules.registry  # noqa: F401  # loads every module, so their hooks 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.modules.ingestion.adapters import CHAIN_KEYS
-from app.worker.jobs import ingest_chain, purge_deleted
+from app.worker.jobs import check_ingestion_health, ingest_chain, purge_deleted
 
 PURGE_DELETED_JOB_ID = "purge_deleted"
 INGEST_JOB_IDS = tuple(f"ingest_{key}" for key in CHAIN_KEYS)
+CHECK_INGESTION_HEALTH_JOB_ID = "check_ingestion_health"
 
 
 def schedule_jobs(scheduler: BaseScheduler) -> BaseScheduler:
     """Add every job to scheduler. purge_deleted runs once a day, at 03:00 UTC. Each chain is
-    ingested every INGEST_INTERVAL_HOURS (at most 6), the first time a few minutes after start."""
+    ingested every INGEST_INTERVAL_HOURS (at most 6), the first time a few minutes after start.
+    The ingestion's health (a chain not ingested for a day) is checked every hour."""
     scheduler.add_job(
         purge_deleted.run,
         CronTrigger(hour=3, minute=0, timezone="UTC"),
@@ -46,6 +48,16 @@ def schedule_jobs(scheduler: BaseScheduler) -> BaseScheduler:
             max_instances=1,
             misfire_grace_time=hours * 60 * 60,
         )
+    scheduler.add_job(
+        check_ingestion_health.run,
+        IntervalTrigger(hours=1, timezone="UTC"),
+        id=CHECK_INGESTION_HEALTH_JOB_ID,
+        replace_existing=True,
+        next_run_time=started + timedelta(minutes=5),
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=60 * 60,
+    )
     return scheduler
 
 

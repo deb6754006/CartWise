@@ -84,6 +84,50 @@ docker compose exec api python -m scripts.store_locations set <store_id> 31.7767
 
 קובץ של סניף שלא מופיע עדיין ב-`stores` נכשל (`unknown store`), וייקלט שוב בריצה הבאה. בסוף כל ריצה שקלטה לפחות קובץ אחד מתרענן ה-view ‏`current_prices`, המחיר הנוכחי של כל מוצר בכל סניף.
 
+#### ניטור והתראות
+
+ה-worker מתריע למפעיל בשלושה מצבים, לכל רשת:
+
+- **`stale`:** אין ריצה `succeeded` או `partial` שהסתיימה ב-`INGEST_STALE_HOURS` השעות האחרונות. רשת שאף ריצה שלה לא הצליחה נמדדת מהריצה הראשונה שלה, ורשת שלא רצה אף פעם לא מתריעה. נבדק ב-job השעתי `check_ingestion_health`.
+- **`record_drop`:** בריצה, מספר הרשומות בקבצים שנקלטו ירד ביותר מ-`INGEST_RECORD_DROP_PCT` אחוז, לעומת הקובץ הקודם של כל סדרה (למשל ה-PriceFull של אותו סניף). נבדק בסוף כל ריצה.
+- **`file_errors`:** יותר מ-`INGEST_FILE_ERROR_PCT` אחוז מהקבצים שנוסו בריצה נכשלו. ריצה שרשימת הקבצים שלה נכשלה נחשבת 100%. נבדק בסוף כל ריצה.
+
+ריצה שכל הקבצים בה דולגו לא משנה את מצב ההתראות של הריצה. לכל רשת ולכל סוג יש לכל היותר התראה פתוחה אחת, בטבלה `ingestion_alerts`. היא נשלחת כשהיא נפתחת, ושוב כל `INGEST_ALERT_REPEAT_HOURS` שעות כל עוד המצב נמשך. כשהמצב נפתר היא נסגרת (`resolved_at`), עם שורת לוג `ingestion_alert_resolved`, בלי מייל.
+
+ההתראה נרשמת תמיד בלוג, כשורת `ingestion_alert` ברמת `ERROR`. בנוסף נשלח מייל, אבל רק כשכל הגדרות ה-SMTP קיימות. המייל נשלח עם STARTTLS ואימות תעודה. בפורט 465 החיבור מוצפן מההתחלה (SMTPS), גם הוא עם אימות תעודה. ההתראה נחשבת נשלחה אם לפחות יעד אחד קיבל אותה, למשל הלוג. יעד שנכשל נרשם בלוג (`ingestion_alert_send_failed`). ה-job השעתי גם שולח תזכורת לכל התראת `record_drop` או `file_errors` פתוחה, שלא נשלחה `INGEST_ALERT_REPEAT_HOURS` שעות.
+
+רק הרשתות שה-worker קולט (שופרסל, רמי לוי וקרפור) נבדקות ל-`stale`. `INGEST_STALE_HOURS` חייב להיות גדול מ-`INGEST_INTERVAL_HOURS`, אחרת ה-worker לא עולה.
+
+`record_drop` מתחיל לעבוד רק אחרי המיגרציה `0010`, כשלכל סדרה יש לפחות שני קבצים שנקלטו אחריה. לשורות הישנות אין `series_key`, והן לא משתתפות בהשוואה.
+
+**איפה מגדירים:** ה-compose מעביר ל-worker את המשתנים האלה מהסביבה של `docker compose`: מהקובץ `deploy/.env`, שלא נכנס ל-git, או מה-shell. בריפו אין להם ערכים. משתנה ריק פירושו ברירת המחדל.
+
+| משתנה | ברירת מחדל | |
+|---|---|---|
+| `INGEST_STALE_HOURS` | `24` | בין 1 ל-168 |
+| `INGEST_RECORD_DROP_PCT` | `30` | בין 1 ל-99 |
+| `INGEST_FILE_ERROR_PCT` | `5` | בין 1 ל-99 |
+| `INGEST_ALERT_REPEAT_HOURS` | `24` | בין 1 ל-168 |
+| `ALERT_SMTP_HOST` | ריק | בלי ערך אין מייל |
+| `ALERT_SMTP_PORT` | `587` | STARTTLS |
+| `ALERT_SMTP_USER` | ריק | |
+| `ALERT_SMTP_PASSWORD` | ריק | **סוד:** רק ב-`.env` שבשרת, לעולם לא בריפו |
+| `ALERT_EMAIL_FROM` | ריק | |
+| `ALERT_EMAIL_TO` | ריק | כתובת אחת, או כמה מופרדות בפסיקים |
+
+איפה רואים התראות:
+
+```bash
+docker compose logs worker | grep ingestion_alert
+docker compose exec db psql -U cartwise -c "SELECT chain_id, kind, opened_at, last_sent_at, details FROM ingestion_alerts WHERE resolved_at IS NULL"
+```
+
+בדיקה ידנית של `stale`, בלי לחכות לתזמון:
+
+```bash
+docker compose exec worker python -m app.worker.jobs.check_ingestion_health
+```
+
 ## רשת עם סינון TLS (למשל NetFree)
 
 אם בניית ה-image נכשלת בשגיאת תעודה (certificate) בשלב `uv sync`, צריך להגדיר את משתנה הסביבה `CARTWISE_EXTRA_CA`, עם הנתיב לקובץ התעודות **המלא** של הרשת. התעודה משמשת רק בזמן הבנייה, ולא נכנסת ל-image.

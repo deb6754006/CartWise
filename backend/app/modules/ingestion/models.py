@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy import (
     CHAR,
@@ -17,6 +17,7 @@ from sqlalchemy import (
     Uuid,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -30,6 +31,9 @@ FileKind = Literal["stores", "price_full", "promo_full"]
 RUN_STATUSES: tuple[RunStatus, ...] = ("running", "succeeded", "partial", "failed", "abandoned")
 FILE_STATUSES: tuple[FileStatus, ...] = ("succeeded", "failed")
 FILE_KINDS: tuple[FileKind, ...] = ("stores", "price_full", "promo_full")
+# What an operator alert is about (Story 3.5, FR-16).
+AlertKind = Literal["stale", "record_drop", "file_errors"]
+ALERT_KINDS: tuple[AlertKind, ...] = ("stale", "record_drop", "file_errors")
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:
@@ -75,6 +79,12 @@ class IngestionFile(Base):
             unique=True,
             postgresql_where=text("status = 'succeeded'"),
         ),
+        Index(
+            "ix_ingestion_files_chain_id_series_key_created_at",
+            "chain_id",
+            "series_key",
+            "created_at",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
@@ -82,6 +92,9 @@ class IngestionFile(Base):
     chain_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("chains.id"))
     file_name: Mapped[str] = mapped_column(String(255))
     kind: Mapped[FileKind] = mapped_column(String(16))
+    # "<kind>:<store_code or ->": the files that follow one another (the PriceFull of one store).
+    # NULL in rows written before Story 3.5.
+    series_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # sha256 of the downloaded bytes. NULL only when the download itself failed.
     file_hash: Mapped[str | None] = mapped_column(CHAR(64), nullable=True)
     size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
@@ -89,3 +102,34 @@ class IngestionFile(Base):
     records: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class IngestionAlert(Base):
+    """An operator alert about one chain's ingestion. At most one open (unresolved) alert of each
+    kind per chain; it is sent again every INGEST_ALERT_REPEAT_HOURS until it is resolved."""
+
+    __tablename__ = "ingestion_alerts"
+    __table_args__ = (
+        CheckConstraint(_in("kind", ALERT_KINDS), name="kind"),
+        Index(
+            "uq_ingestion_alerts_chain_id_kind_open",
+            "chain_id",
+            "kind",
+            unique=True,
+            postgresql_where=text("resolved_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
+    chain_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("chains.id"))
+    kind: Mapped[AlertKind] = mapped_column(String(16))
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # NULL until a send went through.
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The numbers behind the alert (e.g. prev, cur, pct). No names, no prices.
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    # The run that raised (or last confirmed) it. NULL for stale, which no run raises.
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("ingestion_runs.id"), nullable=True
+    )

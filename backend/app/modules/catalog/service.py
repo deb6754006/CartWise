@@ -122,6 +122,11 @@ def list_chains(session: Session) -> list[ChainRef]:
     return [ChainRef(*row) for row in repository.list_chains(session)]
 
 
+def chains_by_gov_codes(session: Session, gov_chain_codes: Collection[str]) -> list[ChainRef]:
+    """The chains that exist among these government chain codes."""
+    return [ChainRef(*row) for row in repository.chains_by_gov_codes(session, gov_chain_codes)]
+
+
 def list_clubs(session: Session) -> list[ClubRef]:
     """All clubs, sorted by chain name and then club name."""
     return [ClubRef(*row) for row in repository.list_clubs(session)]

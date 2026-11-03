@@ -54,6 +54,18 @@ services:
       DATABASE_URL: postgresql+psycopg://cartwise:cartwise@db:5432/cartwise
       ENV: dev
       LOG_LEVEL: INFO
+      # Ingestion health alerts (Story 3.5). No values here: set them in deploy/.env (not in git)
+      # or in the shell. Empty means the default; e-mail is off until every ALERT_* is set.
+      INGEST_STALE_HOURS: ${INGEST_STALE_HOURS:-}
+      INGEST_RECORD_DROP_PCT: ${INGEST_RECORD_DROP_PCT:-}
+      INGEST_FILE_ERROR_PCT: ${INGEST_FILE_ERROR_PCT:-}
+      INGEST_ALERT_REPEAT_HOURS: ${INGEST_ALERT_REPEAT_HOURS:-}
+      ALERT_SMTP_HOST: ${ALERT_SMTP_HOST:-}
+      ALERT_SMTP_PORT: ${ALERT_SMTP_PORT:-}
+      ALERT_SMTP_USER: ${ALERT_SMTP_USER:-}
+      ALERT_SMTP_PASSWORD: ${ALERT_SMTP_PASSWORD:-}
+      ALERT_EMAIL_FROM: ${ALERT_EMAIL_FROM:-}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
 
 volumes:
   db-data:

@@ -18,6 +18,15 @@ def list_chains(session: Session) -> Sequence[tuple[uuid.UUID, str]]:
     return [(row[0], row[1]) for row in rows]
 
 
+def chains_by_gov_codes(
+    session: Session, gov_chain_codes: Collection[str]
+) -> Sequence[tuple[uuid.UUID, str]]:
+    if not gov_chain_codes:
+        return []
+    stmt = select(Chain.id, Chain.name).where(Chain.gov_chain_code.in_(list(gov_chain_codes)))
+    return [(row[0], row[1]) for row in session.execute(stmt.order_by(Chain.id)).all()]
+
+
 def list_clubs(session: Session) -> Sequence[tuple[uuid.UUID, str, uuid.UUID, str]]:
     stmt = (
         select(Club.id, Club.name, Club.chain_id, Chain.name)
