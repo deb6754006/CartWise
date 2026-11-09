@@ -7,8 +7,10 @@ catalog.service, which owns product_aliases (and is the only one to create produ
 
 match() tries, in order:
 1. The barcode (Story 4.1): a valid barcode that has a product is a certain match.
-2. Memory: an existing final or disputed alias of the same key is returned as it is.
-3. The text (Story 4.2): candidates by trigram similarity, each scored by its name, pack size,
+2. Memory of the key: an existing final or disputed alias of the same key is returned as it is.
+3. Memory of the chain (Story 4.4): the chain's final aliases of the same text, with any barcode
+   or none, all pointing to one product: the alias is final for it, with no one asked.
+4. The text (Story 4.2): candidates by trigram similarity, each scored by its name, pack size,
    unit and price; certain above a threshold, uncertain below it, and a new product proposed
    when nothing is near.
 
@@ -49,9 +51,14 @@ MatchState = Literal[
 ]
 MatchSource = Literal["official_file", "receipt"]
 MatchPath = Literal["barcode", "memory", "text"]
+MemoryScope = Literal["key", "chain"]
 Decision = Literal["certain", "uncertain", "new_product_proposal"]
 
 _SETTLED = ("final", "disputed")
+# Asked of a user (on the receipt's confirmation screen): the others are settled, certain, or wait
+# for an operator (disputed).
+_NEEDS_CONFIRMATION = frozenset(("uncertain", "new_product_proposal"))
+FINAL_CONFIDENCE = Decimal(1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +98,13 @@ class MatchResult:
     alias_id: uuid.UUID | None
     confidence: float | None
     candidates: tuple[Candidate, ...] = ()
+
+    @property
+    def needs_confirmation(self) -> bool:
+        """Whether a user is asked to confirm it: only uncertain and new_product_proposal. final
+        and certain are not, disputed waits for an operator (Story 4.5), and unmatched has
+        nothing to ask about (what to do with it is the caller's, Epic 6)."""
+        return self.state in _NEEDS_CONFIRMATION
 
 
 UNMATCHED = MatchResult(state="unmatched", product_id=None, alias_id=None, confidence=None)
@@ -331,8 +345,13 @@ def _log(
     path: MatchPath | None = None,
     score: float | None = None,
     gap: float | None = None,
+    *,
+    memory_scope: MemoryScope | None = None,
+    memory_ambiguous: bool = False,
 ) -> MatchResult:
-    # No alias text: it may come from a user's receipt.
+    # No alias text: it may come from a user's receipt. memory_scope is key or chain when the
+    # path is memory (key unless given); memory_ambiguous: the chain's memory had more than one
+    # product, so the text decided.
     logger.info(
         "matching_match",
         extra={
@@ -340,6 +359,8 @@ def _log(
             "source": context.source if context is not None else None,
             "had_barcode": had_barcode,
             "path": path,
+            "memory_scope": (memory_scope or "key") if path == "memory" else None,
+            "memory_ambiguous": memory_ambiguous,
             "score": round(score, 3) if score is not None else None,
             "gap": round(gap, 3) if gap is not None else None,
         },
@@ -370,7 +391,11 @@ def match(
     1. A valid barcode that has a product: certain (an alias certain for another product moves
        to it).
     2. Otherwise, an existing final or disputed alias of the same key, returned as it is.
-    3. Otherwise by text: certain, uncertain (its top 3 candidates kept) or a new product
+    3. Otherwise, the chain's memory (Story 4.4): when the chain's final aliases of the same text,
+       with any barcode or none, point to one product (not merged), the alias is saved final for
+       it, with confidence 1. More than one product: on to the text, and logged as ambiguous.
+       Another chain's aliases are never memory.
+    4. Otherwise by text: certain, uncertain (its top 3 candidates kept) or a new product
        proposed, by the thresholds in Settings.
     An alias that has votes (Story 4.3) is returned as it is, before anything else. A final or
     disputed alias is never changed. A text that is empty after normalizing, or has no letter or
@@ -397,10 +422,38 @@ def match(
             return _log(_as_stored(alias), context, had_barcode, path)
     if existing is not None and existing.state in _SETTLED:
         return _log(_as_stored(existing), context, had_barcode, "memory")
-    if not _trigrams(catalog_service.normalize_he(text)):
+    norm = catalog_service.normalize_he(text)
+    if not _trigrams(norm):
         # No letter or digit (such as "***"): nothing to match by, and nothing to propose.
         return _log(UNMATCHED, context, had_barcode)
-    return _match_text(session, chain_id, text, code, existing, context, when, had_barcode)
+    # Only with no valid barcode: a valid barcode with no product yet goes by the text, so that
+    # its alias is not settled before the barcode has a product to win with.
+    remembered = (
+        catalog_service.final_products_by_norm(session, chain_id, norm) if code is None else set()
+    )
+    if len(remembered) == 1:
+        [product_id] = remembered
+        alias = catalog_service.upsert_alias(
+            session, chain_id, text, code, "final", product_id, FINAL_CONFIDENCE, now=when
+        )
+        if alias.state != "final" or alias.product_id != product_id:
+            # Settled otherwise by another transaction, after it was looked up: as it is.
+            return _log(_as_stored(alias), context, had_barcode, "memory", memory_scope="chain")
+        if existing is not None:
+            # It was uncertain or certain, and is final now: its candidates are no longer asked.
+            repository.replace_candidates(session, alias.id, [], when)
+        return _log(_as_stored(alias), context, had_barcode, "memory", memory_scope="chain")
+    return _match_text(
+        session,
+        chain_id,
+        text,
+        code,
+        existing,
+        context,
+        when,
+        had_barcode,
+        memory_ambiguous=len(remembered) > 1,
+    )
 
 
 def _proposed_before(session: Session, existing: AliasRef | None) -> uuid.UUID | None:
@@ -421,6 +474,7 @@ def _match_text(
     context: MatchContext | None,
     now: datetime,
     had_barcode: bool,
+    memory_ambiguous: bool = False,
 ) -> MatchResult:
     norm = catalog_service.normalize_he(text)
     products = catalog_service.product_candidates(session, norm)
@@ -454,17 +508,27 @@ def _match_text(
             session, chain_id, text, code, "uncertain", proposed, None, now=now
         )
         if alias.state in _SETTLED:  # settled meanwhile, by another transaction
-            return _log(_as_stored(alias), context, had_barcode, "memory")
+            return _log(
+                _as_stored(alias),
+                context,
+                had_barcode,
+                "memory",
+                memory_ambiguous=memory_ambiguous,
+            )
         repository.replace_candidates(session, alias.id, [], now)
         result = MatchResult("new_product_proposal", alias.product_id, alias.id, None, ())
-        return _log(result, context, had_barcode, "text", best, gap)
+        return _log(
+            result, context, had_barcode, "text", best, gap, memory_ambiguous=memory_ambiguous
+        )
 
     top = scored[0]
     alias = catalog_service.upsert_alias(
         session, chain_id, text, code, decision, top.product_id, _stored(top.score), now=now
     )
     if alias.state in _SETTLED:
-        return _log(_as_stored(alias), context, had_barcode, "memory")
+        return _log(
+            _as_stored(alias), context, had_barcode, "memory", memory_ambiguous=memory_ambiguous
+        )
     if alias.state == "certain":
         # Certain now, or certain before for this same product: it does not go down.
         repository.replace_candidates(session, alias.id, [], now)
@@ -475,7 +539,7 @@ def _match_text(
             session, alias.id, [(c.product_id, _stored(c.score)) for c in kept], now
         )
         result = _as_stored(alias, tuple(kept))
-    return _log(result, context, had_barcode, "text", best, gap)
+    return _log(result, context, had_barcode, "text", best, gap, memory_ambiguous=memory_ambiguous)
 
 
 @dataclass(frozen=True, slots=True)
@@ -514,13 +578,24 @@ def match_file_items(
 
     An item whose text the chain already has an alias of, with no barcode, pointing to a product
     (in any state, and not merged into another), gets that product: it is not scored again, and
-    nothing is written. So does a text seen before in this call. Every other item goes through
-    match() with no barcode and the item in the context. A text that clean_alias_text rejects gets
-    None. Does not commit."""
+    nothing is written. So does a text the chain's final aliases (with any barcode) point to one
+    product by, the chain's memory (Story 4.4), as alias_products_by_norm finds it, unless
+    the chain's alias with no barcode has votes: then its own product. So does a text seen before
+    in this call. Every other item goes through match() with no barcode and the item
+    in the context. A text that clean_alias_text rejects gets None. Does not commit."""
     norms = [catalog_service.alias_norm(item.alias_text) for item in items]
     known: dict[str, uuid.UUID] = catalog_service.alias_products_by_norm(
         session, chain_id, (n for n in norms if n is not None)
     )
+    # A no-barcode alias people voted on is what match() returns as it is: the chain's memory
+    # does not take its place.
+    own = catalog_service.no_barcode_aliases_by_norm(session, chain_id, known)
+    voted = repository.aliases_with_votes(session, [alias.id for alias in own.values()])
+    held = {key: a.product_id for key, a in own.items() if a.id in voted and a.product_id}
+    statuses = catalog_service.product_statuses(session, set(held.values())) if held else {}
+    for key, product_id in held.items():
+        if statuses.get(product_id) not in (None, "merged_into"):
+            known[key] = product_id
     counts: Counter[str] = Counter()
     result: list[uuid.UUID | None] = []
     for item, norm in zip(items, norms, strict=True):
@@ -608,7 +683,6 @@ def match_barcodes(
 
 ALIAS_NOT_FOUND_HE = "הכינוי לא נמצא"
 INVALID_VOTE_HE = "ההצבעה לא תקינה"
-FINAL_CONFIDENCE = Decimal(1)
 
 
 class TrustGate(Protocol):

@@ -435,23 +435,78 @@ def alias_by_key(
 def alias_products_by_norm(
     session: Session, chain_id: uuid.UUID, norms: Sequence[str]
 ) -> dict[str, uuid.UUID]:
-    """alias_norm -> product_id, for the chain's no-barcode aliases among norms (in any alias
-    state) that point to a product not merged into another."""
+    """alias_norm -> product_id, for the chain's aliases among norms that point to a product not
+    merged into another, as match() would find them:
+    1. The no-barcode alias, when it is settled (final or disputed).
+    2. Otherwise, the product of the chain's final aliases of that norm (with any barcode, or
+       none), when they all point to one.
+    3. Otherwise, the no-barcode alias, in any state."""
     found: dict[str, uuid.UUID] = {}
     for start in range(0, len(norms), ALIAS_BATCH):
         batch = norms[start : start + ALIAS_BATCH]
         stmt = (
-            select(ProductAlias.alias_norm, Product.id)
+            select(ProductAlias.alias_norm, ProductAlias.barcode, ProductAlias.state, Product.id)
             .join(Product, Product.id == ProductAlias.product_id)
             .where(
                 ProductAlias.chain_id == chain_id,
-                ProductAlias.barcode.is_(None),
+                or_(ProductAlias.barcode.is_(None), ProductAlias.state == "final"),
                 ProductAlias.alias_norm.in_(batch),
                 Product.status != "merged_into",
             )
         )
-        found.update((norm, product_id) for norm, product_id in session.execute(stmt).all())
+        no_barcode: dict[str, tuple[str, uuid.UUID]] = {}
+        finals: dict[str, set[uuid.UUID]] = {}
+        for norm, barcode, state, product_id in session.execute(stmt).all():
+            if barcode is None:
+                no_barcode[norm] = (state, product_id)
+            if state == "final":
+                finals.setdefault(norm, set()).add(product_id)
+        for norm in set(no_barcode) | set(finals):
+            own = no_barcode.get(norm)
+            chain_finals = finals.get(norm, set())
+            if own is not None and own[0] in _SETTLED_STATES:
+                found[norm] = own[1]
+            elif len(chain_finals) == 1:
+                found[norm] = next(iter(chain_finals))
+            elif own is not None:
+                found[norm] = own[1]
     return found
+
+
+def no_barcode_aliases_by_norm(
+    session: Session, chain_id: uuid.UUID, norms: Sequence[str]
+) -> list[Any]:
+    """(alias_norm, id, state, product_id, confidence) of the chain's aliases with no barcode
+    among norms."""
+    rows: list[Any] = []
+    for start in range(0, len(norms), ALIAS_BATCH):
+        batch = norms[start : start + ALIAS_BATCH]
+        stmt = select(ProductAlias.alias_norm, *_ALIAS_REF).where(
+            ProductAlias.chain_id == chain_id,
+            ProductAlias.barcode.is_(None),
+            ProductAlias.alias_norm.in_(batch),
+        )
+        rows.extend(session.execute(stmt).all())
+    return rows
+
+
+def final_products_by_norm(
+    session: Session, chain_id: uuid.UUID, alias_norm: str
+) -> set[uuid.UUID]:
+    """The products of the chain's final aliases of this alias_norm, with any barcode or none,
+    that are not merged into another."""
+    stmt = (
+        select(Product.id)
+        .distinct()
+        .join(ProductAlias, ProductAlias.product_id == Product.id)
+        .where(
+            ProductAlias.chain_id == chain_id,
+            ProductAlias.alias_norm == alias_norm,
+            ProductAlias.state == "final",
+            Product.status != "merged_into",
+        )
+    )
+    return set(session.execute(stmt).scalars().all())
 
 
 def upsert_alias(
@@ -461,7 +516,7 @@ def upsert_alias(
     alias_text: str,
     alias_norm: str,
     barcode: str | None,
-    state: Literal["certain", "uncertain"],
+    state: Literal["certain", "uncertain", "final"],
     product_id: uuid.UUID,
     confidence: Decimal | None,
     now: datetime,

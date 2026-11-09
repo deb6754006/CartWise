@@ -94,6 +94,16 @@ def alias_has_votes(session: Session, alias_id: uuid.UUID) -> bool:
     return session.execute(stmt).first() is not None
 
 
+def aliases_with_votes(session: Session, alias_ids: Sequence[uuid.UUID]) -> set[uuid.UUID]:
+    """Those of these aliases that have at least one vote."""
+    found: set[uuid.UUID] = set()
+    for start in range(0, len(alias_ids), 1000):
+        batch = alias_ids[start : start + 1000]
+        stmt = select(MatchVote.alias_id).distinct().where(MatchVote.alias_id.in_(batch))
+        found.update(session.execute(stmt).scalars().all())
+    return found
+
+
 def user_votes(
     session: Session, alias_id: uuid.UUID
 ) -> Sequence[tuple[uuid.UUID, str, uuid.UUID | None]]:

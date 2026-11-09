@@ -513,13 +513,37 @@ def alias_by_key(
 def alias_products_by_norm(
     session: Session, chain_id: uuid.UUID, norms: Iterable[str]
 ) -> dict[str, uuid.UUID]:
-    """alias_norm -> product_id, for the chain's aliases with no barcode among these norms (from
-    alias_norm) that point to a product, in any alias state. A product merged into another is left
-    out. Reads only."""
+    """alias_norm -> product_id, for these norms (from alias_norm), as match() finds them:
+    1. The chain's settled (final or disputed) alias with no barcode.
+    2. Otherwise, the one product of the chain's final aliases of that norm, with any barcode or
+       none: the chain's memory (Story 4.4).
+    3. Otherwise, the chain's alias with no barcode, in any state.
+    Only aliases that point to a product not merged into another count. Reads only."""
     wanted: Sequence[str] = sorted(set(norms))
     if not wanted:
         return {}
     return repository.alias_products_by_norm(session, chain_id, wanted)
+
+
+def no_barcode_aliases_by_norm(
+    session: Session, chain_id: uuid.UUID, norms: Iterable[str]
+) -> dict[str, AliasRef]:
+    """alias_norm -> the chain's alias of it with no barcode, for these norms (from alias_norm)
+    that have one. Reads only."""
+    wanted: Sequence[str] = sorted(set(norms))
+    if not wanted:
+        return {}
+    rows = repository.no_barcode_aliases_by_norm(session, chain_id, wanted)
+    return {row[0]: AliasRef(*row[1:]) for row in rows}
+
+
+def final_products_by_norm(
+    session: Session, chain_id: uuid.UUID, alias_norm: str
+) -> set[uuid.UUID]:
+    """The products the chain's final aliases of this alias_norm point to, with any barcode or
+    none, leaving out a product merged into another: the chain's memory (Story 4.4). Never
+    another chain's. Reads only."""
+    return repository.final_products_by_norm(session, chain_id, alias_norm)
 
 
 def upsert_alias(
@@ -527,14 +551,15 @@ def upsert_alias(
     chain_id: uuid.UUID,
     alias_text: str,
     barcode: str | None,
-    state: Literal["certain", "uncertain"],
+    state: Literal["certain", "uncertain", "final"],
     product_id: uuid.UUID,
     confidence: Decimal | None,
     now: datetime | None = None,
 ) -> AliasRef:
     """The chain's alias of this text and barcode (None: no barcode), created or set to this
     state, product and confidence. A final or disputed alias is not changed, and a certain alias
-    for product_id does not go down to uncertain. alias_text must come from clean_alias_text.
+    for product_id does not go down to uncertain. final is for the chain's memory only (Story
+    4.4): an alias of a text the chain already settled. alias_text must come from clean_alias_text.
 
     For matching only: catalog does not decide what an alias matches. Does not commit.
     """
