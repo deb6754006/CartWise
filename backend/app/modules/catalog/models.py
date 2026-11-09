@@ -168,3 +168,47 @@ class Product(Base):
     is_weighted: Mapped[bool] = mapped_column(Boolean)
     status: Mapped[ProductStatus] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+AliasState = Literal["certain", "uncertain", "final", "disputed"]
+
+ALIAS_STATES: tuple[AliasState, ...] = ("certain", "uncertain", "final", "disputed")
+
+# The key of an alias: a chain's name for a product, with its barcode (or with none).
+ALIAS_KEY_CONSTRAINT = "uq_product_aliases_chain_id_alias_norm_barcode"
+
+
+class ProductAlias(Base):
+    """A chain's name for a product (in its files, or on a receipt line), with the product it was
+    matched to. Rows are created only by matching, through catalog.service.
+
+    alias_text is NFC with whitespace collapsed, and alias_norm is normalize_he(alias_text). A
+    barcode is kept as it is; NULL (no barcode) is one key value, not a different one each time.
+    """
+
+    __tablename__ = "product_aliases"
+    __table_args__ = (
+        UniqueConstraint(
+            "chain_id",
+            "alias_norm",
+            "barcode",
+            name=ALIAS_KEY_CONSTRAINT,
+            postgresql_nulls_not_distinct=True,
+        ),
+        CheckConstraint(_in("state", ALIAS_STATES), name="state"),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="confidence"),
+        Index("ix_product_aliases_product_id", "product_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
+    chain_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("chains.id"))
+    alias_text: Mapped[str] = mapped_column(Text)
+    alias_norm: Mapped[str] = mapped_column(Text)
+    barcode: Mapped[str | None] = mapped_column(Text, nullable=True)
+    product_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("products.id"), nullable=True
+    )
+    state: Mapped[AliasState] = mapped_column(String(16))
+    confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

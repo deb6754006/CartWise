@@ -3,14 +3,24 @@
 import uuid
 from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Literal
 
-from sqlalchemy import case, cast, func, select, update
+from sqlalchemy import and_, case, cast, func, literal_column, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.core.ids import new_id
-from app.modules.catalog.models import Brand, Chain, Club, Geography, Product, Store
+from app.modules.catalog.models import (
+    ALIAS_KEY_CONSTRAINT,
+    Brand,
+    Chain,
+    Club,
+    Geography,
+    Product,
+    ProductAlias,
+    Store,
+)
 
 
 def list_chains(session: Session) -> Sequence[tuple[uuid.UUID, str]]:
@@ -308,3 +318,86 @@ def product_ids_by_barcode(session: Session, barcodes: Sequence[str]) -> dict[st
             if barcode is not None:
                 found[barcode] = product_id
     return found
+
+
+# Rows per statement: well under Postgres's 65535 parameters, at 10 columns a row.
+ALIAS_BATCH = 1000
+# States a barcode match never changes: decided by votes or by an operator.
+_SETTLED_STATES = ("final", "disputed")
+
+_ALIAS_REF = (ProductAlias.id, ProductAlias.state, ProductAlias.product_id, ProductAlias.confidence)
+
+
+def _certain_on_conflict(stmt: Any) -> Any:
+    """On a key that exists: move the alias to the inserted product, as certain. A final or
+    disputed alias is not changed, nor is one already certain for that product and confidence."""
+    return stmt.on_conflict_do_update(
+        constraint=ALIAS_KEY_CONSTRAINT,
+        set_={
+            "product_id": stmt.excluded.product_id,
+            "state": "certain",
+            "confidence": stmt.excluded.confidence,
+            "updated_at": stmt.excluded.updated_at,
+        },
+        where=and_(
+            ProductAlias.state.not_in(_SETTLED_STATES),
+            or_(
+                ProductAlias.state != "certain",
+                ProductAlias.product_id.is_distinct_from(stmt.excluded.product_id),
+                ProductAlias.confidence.is_distinct_from(stmt.excluded.confidence),
+            ),
+        ),
+    )
+
+
+def upsert_certain_alias(
+    session: Session,
+    *,
+    chain_id: uuid.UUID,
+    alias_text: str,
+    alias_norm: str,
+    barcode: str,
+    product_id: uuid.UUID,
+    confidence: Decimal,
+    now: datetime,
+) -> Any:
+    """Insert the alias as certain for product_id, or move an existing one of the same key to it.
+    A final or disputed alias is not changed, nor is one already certain for product_id. Returns
+    the alias after that (id, state, product_id, confidence)."""
+    stmt = insert(ProductAlias).values(
+        id=new_id(),
+        chain_id=chain_id,
+        alias_text=alias_text,
+        alias_norm=alias_norm,
+        barcode=barcode,
+        product_id=product_id,
+        state="certain",
+        confidence=confidence,
+        created_at=now,
+        updated_at=now,
+    )
+    stmt = _certain_on_conflict(stmt)
+    row = session.execute(stmt.returning(*_ALIAS_REF)).one_or_none()
+    if row is not None:
+        return row
+    # The alias exists and was left as it is.
+    return session.execute(
+        select(*_ALIAS_REF).where(
+            ProductAlias.chain_id == chain_id,
+            ProductAlias.alias_norm == alias_norm,
+            ProductAlias.barcode == barcode,
+        )
+    ).one()
+
+
+def upsert_certain_aliases(session: Session, rows: Sequence[Mapping[str, Any]]) -> int:
+    """Insert certain aliases, in batches (keys unique within rows). One whose key exists is moved
+    to the row's product, as in upsert_certain_alias. Returns how many were inserted."""
+    inserted = 0
+    for start in range(0, len(rows), ALIAS_BATCH):
+        batch = rows[start : start + ALIAS_BATCH]
+        stmt = _certain_on_conflict(insert(ProductAlias).values(list(batch)))
+        # xmax is 0 for a row this statement inserted, and set for one it updated.
+        flags = session.execute(stmt.returning(literal_column("xmax = 0"))).scalars().all()
+        inserted += sum(1 for flag in flags if flag)
+    return inserted

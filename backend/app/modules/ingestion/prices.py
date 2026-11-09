@@ -6,8 +6,9 @@ or Promotions > Promotion. Tags are matched on their local name in any case. Tim
 are local (Asia/Jerusalem), with no zone.
 
 An item with a barcode (ItemType 1, 8 to 14 digits) is matched to the product with that barcode,
-which is created if missing. An item with an internal code (ItemType 0) is skipped and counted:
-matching it is Story 3.6's. No product name or price ever goes into a log line.
+which is created if missing, and its name is saved as the chain's alias of it (matching.service).
+An item with an internal code (ItemType 0) is skipped and counted: matching it is Story 3.6's.
+No product name or price ever goes into a log line.
 """
 
 import logging
@@ -28,6 +29,7 @@ from app.modules.catalog import service as catalog_service
 from app.modules.catalog.models import PackUnit
 from app.modules.catalog.service import ProductRecord
 from app.modules.ingestion.decode import child_fields, local_name
+from app.modules.matching import service as matching_service
 from app.modules.pricing import service as pricing_service
 from app.modules.pricing.models import PricePer, PromotionKind
 from app.modules.pricing.service import OfficialPrice, PromotionRecord
@@ -36,7 +38,6 @@ logger = logging.getLogger("app.ingestion")
 
 LOCAL_ZONE = ZoneInfo("Asia/Jerusalem")
 BARCODE_ITEM_TYPE = "1"
-_BARCODE = re.compile(r"[0-9]{8,14}")
 _DIGITS = re.compile(r"[0-9]+")
 # unit_price_agorot and bundle_price_agorot are integers.
 MAX_AGOROT = 2**31 - 1
@@ -168,14 +169,10 @@ def _agorot(value: str) -> int | None:
 
 
 def barcode_of(fields: dict[str, str]) -> str | None:
-    """The barcode of an item: ItemType 1 and an ItemCode of 8 to 14 digits, kept as it is."""
-    code = fields.get("itemcode", "")
-    if fields.get("itemtype", "") != BARCODE_ITEM_TYPE or not _BARCODE.fullmatch(code):
+    """The barcode of an item: ItemType 1 and a valid barcode (catalog.service.valid_barcode)."""
+    if fields.get("itemtype", "") != BARCODE_ITEM_TYPE:
         return None
-    if not code.strip("0"):
-        # A placeholder (00000000): it would merge unrelated items into one product.
-        return None
-    return code
+    return catalog_service.valid_barcode(fields.get("itemcode", ""))
 
 
 def _store_code(root: Element) -> str:
@@ -346,6 +343,13 @@ def price_handler(now: Callable[[], datetime] = _utcnow) -> FileHandler:
             ),
             now=at,
         )
+        aliases_new = matching_service.match_barcodes(
+            session,
+            chain_id,
+            ((i.name, i.barcode) for i in parsed.items),
+            now=at,
+            product_ids=product_ids,
+        )
         prices = [
             OfficialPrice(
                 product_id=product_ids[item.barcode],
@@ -365,6 +369,7 @@ def price_handler(now: Callable[[], datetime] = _utcnow) -> FileHandler:
             items=len(parsed.items),
             observations_new=new,
             unchanged=unchanged,
+            aliases_new=aliases_new,
         )
         return new + unchanged
 

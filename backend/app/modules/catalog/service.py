@@ -2,6 +2,7 @@
 
 import csv
 import math
+import re
 import unicodedata
 import uuid
 from collections.abc import Collection, Iterable, Sequence
@@ -16,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.ids import new_id
 from app.modules.catalog import repository
-from app.modules.catalog.models import LocationSource, PackUnit, StoreStatus
+from app.modules.catalog.models import AliasState, LocationSource, PackUnit, StoreStatus
 
 # Search needs this many characters, after normalizing.
 MIN_BRAND_SEARCH_LENGTH = 2
@@ -380,3 +381,108 @@ def product_ids_by_barcode(session: Session, barcodes: Iterable[str]) -> dict[st
     """The id of the existing product of each barcode that has one. Creates nothing."""
     wanted: Sequence[str] = sorted(set(barcodes))
     return repository.product_ids_by_barcode(session, wanted)
+
+
+_BARCODE = re.compile(r"[0-9]{8,14}")
+
+
+def valid_barcode(code: str) -> str | None:
+    """The barcode, when code is one: 8 to 14 digits, not all zeros, after trimming whitespace at
+    its ends. Kept as it is otherwise: no zeros added or dropped, and no check digit test (about
+    3% of the barcodes in real files fail it, and they are real products)."""
+    text = code.strip()
+    if not _BARCODE.fullmatch(text) or not text.strip("0"):
+        # All zeros is a placeholder: it would merge unrelated items into one product.
+        return None
+    return text
+
+
+# The confidence of an alias matched by its barcode.
+BARCODE_CONFIDENCE = Decimal(1)
+
+
+@dataclass(frozen=True, slots=True)
+class AliasRef:
+    id: uuid.UUID
+    state: AliasState
+    product_id: uuid.UUID | None
+    confidence: Decimal | None
+
+
+# Longer, alias_norm could exceed the size of a btree index row, and the insert would fail the
+# whole transaction (a price file's prices included). No real product name comes near it.
+MAX_ALIAS_NORM_LENGTH = 500
+
+
+def clean_alias_text(text: str) -> str | None:
+    """An alias as it is kept (NFC, whitespace collapsed), or None when nothing is left of it
+    after normalizing, or when it is longer than MAX_ALIAS_NORM_LENGTH normalized."""
+    # Postgres rejects NUL in text.
+    cleaned = _clean(text.replace("\x00", " "))
+    norm = normalize_he(cleaned)
+    return cleaned if norm and len(norm) <= MAX_ALIAS_NORM_LENGTH else None
+
+
+def upsert_certain_alias(
+    session: Session,
+    chain_id: uuid.UUID,
+    alias_text: str,
+    barcode: str,
+    product_id: uuid.UUID,
+    now: datetime | None = None,
+) -> AliasRef:
+    """The chain's alias of this text and barcode, certain for product_id (the product of the
+    barcode): created, or moved to product_id when it is certain (or uncertain) for another. A
+    final or disputed alias is not changed. alias_text must come from clean_alias_text.
+
+    For matching only: catalog does not decide what an alias matches. Does not commit.
+    """
+    row = repository.upsert_certain_alias(
+        session,
+        chain_id=chain_id,
+        alias_text=alias_text,
+        alias_norm=normalize_he(alias_text),
+        barcode=barcode,
+        product_id=product_id,
+        confidence=BARCODE_CONFIDENCE,
+        now=now if now is not None else datetime.now(UTC),
+    )
+    return AliasRef(*row)
+
+
+def ensure_certain_aliases(
+    session: Session,
+    chain_id: uuid.UUID,
+    items: Iterable[tuple[str, str, uuid.UUID]],
+    now: datetime | None = None,
+) -> int:
+    """Bulk: a certain alias for each (alias_text, barcode, product_id), created, or moved to
+    product_id as in upsert_certain_alias (a final or disputed alias is not changed). A text that
+    clean_alias_text rejects is skipped. Returns how many were created.
+
+    For matching only. Does not commit.
+    """
+    when = now if now is not None else datetime.now(UTC)
+    first: dict[tuple[str, str], dict[str, Any]] = {}
+    for alias_text, barcode, product_id in items:
+        text = clean_alias_text(alias_text)
+        if text is None:
+            continue
+        norm = normalize_he(text)
+        first.setdefault(
+            (norm, barcode),
+            {
+                "id": new_id(),
+                "chain_id": chain_id,
+                "alias_text": text,
+                "alias_norm": norm,
+                "barcode": barcode,
+                "product_id": product_id,
+                "state": "certain",
+                "confidence": BARCODE_CONFIDENCE,
+                "created_at": when,
+                "updated_at": when,
+            },
+        )
+    # Sorted by key, so two runs inserting the same aliases at once take the locks in one order.
+    return repository.upsert_certain_aliases(session, [first[key] for key in sorted(first)])
