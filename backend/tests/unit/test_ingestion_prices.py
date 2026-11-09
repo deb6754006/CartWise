@@ -60,7 +60,11 @@ def test_the_price_fixture() -> None:
     assert (cheese.pack_unit, cheese.is_weighted) == ("kg", True)
     # 08:00 in Israel, winter time (UTC+2).
     assert milk.observed_at == datetime(2026, 11, 1, 6, 0, tzinfo=UTC)
-    assert parsed.skipped == {"no_barcode": 1}
+    # The tomato has an internal code: it goes to matching by its name.
+    assert parsed.skipped == {}
+    [tomato] = parsed.internal_items
+    assert (tomato.name, tomato.price_agorot, tomato.per) == ("עגבניה בדויה", 790, "kg")
+    assert (tomato.pack_size, tomato.pack_unit, tomato.is_weighted) == (Decimal("1.00"), "kg", True)
 
 
 @pytest.mark.parametrize(
@@ -95,10 +99,56 @@ def test_a_bad_price_is_skipped(price: str) -> None:
         ("0000000000000", "1"),
     ],
 )
-def test_an_item_with_no_barcode_is_skipped(code: str, item_type: str) -> None:
+def test_an_item_with_no_barcode_is_internal(code: str, item_type: str) -> None:
     parsed = parse_price_file(_root(_price_file(_item(code=code, item_type=item_type))))
     assert parsed.items == []
-    assert parsed.skipped == {"no_barcode": 1}
+    assert parsed.skipped == {}
+    [item] = parsed.internal_items
+    assert (item.name, item.price_agorot, item.per) == ("מוצר בדוי", 1390, "unit")
+    assert item.is_weighted is False
+
+
+def test_an_internal_item_with_a_bad_price_or_no_name_is_skipped() -> None:
+    parsed = parse_price_file(
+        _root(
+            _price_file(
+                _item(code="7001", item_type="0", price="abc"),
+                _item("7002", item_type="0", name=""),
+            )
+        )
+    )
+    assert parsed.internal_items == []
+    assert parsed.skipped == {"bad_price": 1, "no_name": 1}
+
+
+def test_the_first_internal_item_of_a_name_wins() -> None:
+    parsed = parse_price_file(
+        _root(
+            _price_file(
+                _item("7001", "5.00", item_type="0", name="בננה"),
+                _item("7002", "6.00", item_type="0", name="  בננה "),
+            )
+        )
+    )
+    assert [(i.name, i.price_agorot) for i in parsed.internal_items] == [("בננה", 500)]
+    assert parsed.skipped == {"duplicate_name": 1}
+
+
+def test_a_weighted_internal_item_is_per_kg() -> None:
+    extra = "<bIsWeighted>1</bIsWeighted>"
+    [item] = parse_price_file(
+        _root(_price_file(_item("7001", "12.90", item_type="0", extra=extra)))
+    ).internal_items
+    assert (item.per, item.price_agorot, item.is_weighted) == ("kg", 1290, True)
+
+
+def test_an_internal_item_and_a_barcode_item_are_kept_apart() -> None:
+    parsed = parse_price_file(
+        _root(_price_file(_item(name="חלב"), _item("7001", item_type="0", name="חלב")))
+    )
+    assert [i.name for i in parsed.items] == ["חלב"]
+    assert [i.name for i in parsed.internal_items] == ["חלב"]
+    assert parsed.skipped == {}
 
 
 def test_a_barcode_is_kept_as_it_is() -> None:

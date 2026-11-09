@@ -1,9 +1,9 @@
 """matching: business logic. Other modules use matching data only through this file.
 
 Every alias of a product, from an official file or a receipt line, is matched here: match() for
-one alias, match_barcodes() for a whole price file. Only matching creates aliases, and it writes
-them only through catalog.service, which owns product_aliases (and is the only one to create
-products).
+one alias, match_barcodes() for a whole price file's barcodes, and match_file_items() for its
+items with no barcode. Only matching creates aliases, and it writes them only through
+catalog.service, which owns product_aliases (and is the only one to create products).
 
 match() tries, in order:
 1. The barcode (Story 4.1): a valid barcode that has a product is a certain match.
@@ -50,10 +50,15 @@ _SETTLED = ("final", "disputed")
 @dataclass(frozen=True, slots=True)
 class MatchContext:
     """Where the alias was seen. unit_price_agorot, when known, tests each candidate's price
-    against the median of its current regular prices."""
+    against the median of its current regular prices. is_weighted, pack_size and pack_unit are
+    the item's, from an official file: used only for a product proposed for it (pack_size and
+    pack_unit together, or else the pack written in the text), never in scoring."""
 
     source: MatchSource
     unit_price_agorot: int | None = None
+    is_weighted: bool = False
+    pack_size: Decimal | None = None
+    pack_unit: PackUnit | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -423,8 +428,16 @@ def _match_text(
         proposed = _proposed_before(session, existing)
         if proposed is None:
             size, unit = parse_pack(norm)
+            if context is not None and context.pack_size and context.pack_unit:
+                size, unit = context.pack_size, context.pack_unit
             proposed = catalog_service.propose_product(
-                session, text, size, unit, barcode=code, now=now
+                session,
+                text,
+                size,
+                unit,
+                barcode=code,
+                now=now,
+                is_weighted=context.is_weighted if context is not None else False,
             )
         alias = catalog_service.upsert_alias(
             session, chain_id, text, code, "uncertain", proposed, None, now=now
@@ -452,6 +465,84 @@ def _match_text(
         )
         result = _as_stored(alias, tuple(kept))
     return _log(result, context, had_barcode, "text", best, gap)
+
+
+@dataclass(frozen=True, slots=True)
+class FileItem:
+    """An item of an official file with no barcode. unit_price_agorot is its price when it is per
+    unit (None otherwise); is_weighted and the pack go to a product proposed for it."""
+
+    alias_text: str
+    unit_price_agorot: int | None = None
+    is_weighted: bool = False
+    pack_size: Decimal | None = None
+    pack_unit: PackUnit | None = None
+
+
+_FILE_ITEM_COUNTS = (
+    "items",
+    "reused",
+    "matched",
+    "certain",
+    "uncertain",
+    "proposed",
+    "final",
+    "disputed",
+    "unmatched",
+)
+
+
+def match_file_items(
+    session: Session,
+    chain_id: uuid.UUID,
+    items: Sequence[FileItem],
+    now: datetime | None = None,
+) -> list[uuid.UUID | None]:
+    """Matching for the items of an official file with no barcode (Story 3.6): the product of each
+    item, in the same order, or None.
+
+    An item whose text the chain already has an alias of, with no barcode, pointing to a product
+    (in any state, and not merged into another), gets that product: it is not scored again, and
+    nothing is written. So does a text seen before in this call. Every other item goes through
+    match() with no barcode and the item in the context. A text that clean_alias_text rejects gets
+    None. Does not commit."""
+    norms = [catalog_service.alias_norm(item.alias_text) for item in items]
+    known: dict[str, uuid.UUID] = catalog_service.alias_products_by_norm(
+        session, chain_id, (n for n in norms if n is not None)
+    )
+    counts: Counter[str] = Counter()
+    result: list[uuid.UUID | None] = []
+    for item, norm in zip(items, norms, strict=True):
+        counts["items"] += 1
+        if norm is None:
+            counts["unmatched"] += 1
+            result.append(None)
+            continue
+        if norm in known:
+            counts["reused"] += 1
+            result.append(known[norm])
+            continue
+        context = MatchContext(
+            source="official_file",
+            unit_price_agorot=item.unit_price_agorot,
+            is_weighted=item.is_weighted,
+            pack_size=item.pack_size,
+            pack_unit=item.pack_unit,
+        )
+        outcome = match(session, item.alias_text, chain_id, None, context, now)
+        if outcome.state == "new_product_proposal":
+            counts["proposed"] += 1
+        elif outcome.state != "unmatched":
+            counts[outcome.state] += 1
+        if outcome.product_id is None:
+            counts["unmatched"] += 1
+        else:
+            counts["matched"] += 1
+            known[norm] = outcome.product_id
+        result.append(outcome.product_id)
+    # Counts only: no alias text.
+    logger.info("matching_file_items", extra={name: counts[name] for name in _FILE_ITEM_COUNTS})
+    return result
 
 
 def match_barcodes(

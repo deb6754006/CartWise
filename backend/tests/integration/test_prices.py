@@ -189,13 +189,14 @@ def _observations(engine: Engine) -> list[dict[str, Any]]:
 
 
 def _current(factory: sessionmaker[Session], store_id: uuid.UUID) -> dict[str, tuple[int, str]]:
+    """The store's current prices, by barcode, or by name for a product with no barcode."""
     with factory() as session:
         current = pricing_service.current_prices(session, store_id)
-        barcodes = {
-            row[0]: row[1]
-            for row in session.execute(text("SELECT id, barcode FROM products")).all()
+        keys = {
+            row[0]: row[1] if row[1] is not None else row[2]
+            for row in session.execute(text("SELECT id, barcode, name FROM products")).all()
         }
-    return {barcodes[k]: (v.unit_price_agorot, v.per) for k, v in current.items()}
+    return {keys[k]: (v.unit_price_agorot, v.per) for k, v in current.items()}
 
 
 def _active(
@@ -222,15 +223,18 @@ def test_a_first_price_file(engine: Engine, factory: sessionmaker[Session], stor
         _item(MILK, "13.90", "חלב בדוי"),
         _item(BREAD, "9.50", "לחם בדוי"),
         _item(CHEESE, "66.00", "גבינה בדויה", weighted="1"),
-        _item("7001", "7.90", "עגבניה בדויה", item_type="0"),
+        _item("7001", "7.90", "קולרבי אורגני", item_type="0"),
     )
-    assert _prices(factory, chain_id, data) == 3
+    assert _prices(factory, chain_id, data) == 4
 
+    # The item with an internal code is matched by its name (Story 3.6): nothing is near, so a
+    # product is proposed for it.
     products = _rows(engine, "SELECT * FROM products ORDER BY barcode")
     assert [(p["barcode"], p["name"], p["status"]) for p in products] == [
         (MILK, "חלב בדוי", "active"),
         (BREAD, "לחם בדוי", "active"),
         (CHEESE, "גבינה בדויה", "active"),
+        (None, "קולרבי אורגני", "proposed"),
     ]
     assert (products[0]["pack_size"], products[0]["pack_unit"]) == (Decimal(1), "unit")
     assert products[2]["is_weighted"] is True
@@ -241,6 +245,7 @@ def test_a_first_price_file(engine: Engine, factory: sessionmaker[Session], stor
         (MILK, 1390, "unit"),
         (BREAD, 950, "unit"),
         (CHEESE, 6600, "kg"),
+        (None, 790, "unit"),
     ]
     for o in obs:
         assert (o["source"], o["price_type"], o["status"]) == ("official_file", "regular", "valid")
@@ -259,6 +264,7 @@ def test_a_first_price_file(engine: Engine, factory: sessionmaker[Session], stor
         MILK: (1390, "unit"),
         BREAD: (950, "unit"),
         CHEESE: (6600, "kg"),
+        "קולרבי אורגני": (790, "unit"),
     }
 
 
@@ -680,6 +686,7 @@ def test_a_run_of_stores_prices_and_promotions(
         MILK: (690, "unit"),
         BREAD: (950, "unit"),
         CHEESE: (6600, "kg"),
+        "עגבניה בדויה": (790, "kg"),  # with an internal code: a proposed product
     }
     active = _active(factory, store_id)
     assert set(active) == {"1", "2"}  # 3 is a coupon
@@ -694,7 +701,7 @@ def test_a_run_of_stores_prices_and_promotions(
     [obs] = _rows(engine, "SELECT DISTINCT source_ref FROM price_observations")
     assert obs["source_ref"] == PRICE
     records = {r["file_name"]: r["records"] for r in _rows(engine, "SELECT * FROM ingestion_files")}
-    assert (records[PRICE], records[PROMO]) == (3, 2)
+    assert (records[PRICE], records[PROMO]) == (4, 2)
 
 
 def test_a_file_of_an_unknown_store_fails_alone(
@@ -712,7 +719,7 @@ def test_a_file_of_an_unknown_store_fails_alone(
     assert {rows[name]["status"] for name in rows if name != unknown} == {"succeeded"}
     # A partial run refreshes the view as well.
     [store] = _rows(engine, "SELECT id FROM stores WHERE gov_store_code = '101'")
-    assert len(_current(factory, store["id"])) == 3
+    assert len(_current(factory, store["id"])) == 4
 
     # Once the store is in the Stores file, the same file is taken again.
     _store(factory, CODE, "9")

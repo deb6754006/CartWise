@@ -394,7 +394,8 @@ def test_a_price_file_saves_aliases(
         rows = conn.execute(
             text(
                 "SELECT a.alias_text, a.barcode, a.state, a.chain_id, p.barcode AS product_barcode "
-                "FROM product_aliases a JOIN products p ON p.id = a.product_id ORDER BY a.barcode"
+                "FROM product_aliases a JOIN products p ON p.id = a.product_id "
+                "WHERE a.barcode IS NOT NULL ORDER BY a.barcode"
             )
         ).all()
     assert [(r.alias_text, r.barcode, r.state, r.chain_id) for r in rows] == [
@@ -409,7 +410,8 @@ def test_a_price_file_saves_aliases(
         _prices(factory, chain_id, data, NOW + timedelta(hours=6))
     [record] = [r for r in caplog.records if r.getMessage() == "ingestion_prices"]
     assert record.aliases_new == 0  # type: ignore[attr-defined]
-    assert len(_aliases(engine)) == 3
+    # The 3 by barcode, and the item with an internal code's, by its name (Story 3.6).
+    assert len(_aliases(engine)) == 4
 
 
 # --- Schema ---

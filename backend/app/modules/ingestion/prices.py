@@ -7,7 +7,8 @@ are local (Asia/Jerusalem), with no zone.
 
 An item with a barcode (ItemType 1, 8 to 14 digits) is matched to the product with that barcode,
 which is created if missing, and its name is saved as the chain's alias of it (matching.service).
-An item with an internal code (ItemType 0) is skipped and counted: matching it is Story 3.6's.
+An item with an internal code (ItemType 0, or no valid barcode) is matched by its name
+(matching.service.match_file_items, Story 3.6), and priced when it gets a product.
 No product name or price ever goes into a log line.
 """
 
@@ -30,6 +31,7 @@ from app.modules.catalog.models import PackUnit
 from app.modules.catalog.service import ProductRecord
 from app.modules.ingestion.decode import child_fields, local_name
 from app.modules.matching import service as matching_service
+from app.modules.matching.service import FileItem
 from app.modules.pricing import service as pricing_service
 from app.modules.pricing.models import PricePer, PromotionKind
 from app.modules.pricing.service import OfficialPrice, PromotionRecord
@@ -78,10 +80,24 @@ class PriceItem:
     observed_at: datetime | None
 
 
+@dataclass(frozen=True, slots=True)
+class InternalItem:
+    """An item with no barcode (an internal code), matched by its name."""
+
+    name: str
+    price_agorot: int
+    per: PricePer
+    is_weighted: bool
+    pack_size: Decimal | None
+    pack_unit: PackUnit | None
+    observed_at: datetime | None
+
+
 @dataclass(slots=True)
 class PriceFile:
     store_code: str
     items: list[PriceItem]
+    internal_items: list[InternalItem] = field(default_factory=list)
     skipped: Counter[str] = field(default_factory=Counter)
 
 
@@ -191,16 +207,16 @@ def _elements(root: Element, tag: str) -> list[Element]:
 
 
 def parse_price_file(root: Element) -> PriceFile:
-    """The store's code and its items with a barcode and a valid price, in file order. The first
-    item of a barcode wins. Skipped items are counted by reason."""
+    """The store's code and its items with a valid price and a name, in file order: those with a
+    barcode in items (the first item of a barcode wins), and those with none in internal_items
+    (the first of an alias key wins, counted after as duplicate_name). Skipped items are counted
+    by reason."""
     result = PriceFile(store_code=_store_code(root), items=[])
     seen: set[str] = set()
+    seen_internal: set[str] = set()
     for element in _elements(root, "item"):
         fields = child_fields(element)
         barcode = barcode_of(fields)
-        if barcode is None:
-            result.skipped["no_barcode"] += 1
-            continue
         price = _agorot(fields.get("itemprice", ""))
         if price is None:
             result.skipped["bad_price"] += 1
@@ -209,14 +225,37 @@ def parse_price_file(root: Element) -> PriceFile:
         if not name:
             result.skipped["no_name"] += 1
             continue
-        if barcode in seen:
+        if barcode is not None and barcode in seen:
             result.skipped["duplicate"] += 1
             continue
-        seen.add(barcode)
+        # An item with no barcode is known by its name, under the key its alias will have. One
+        # with no key is kept: matching gives it no product.
+        key = catalog_service.alias_norm(name) if barcode is None else None
+        if key is not None and key in seen_internal:
+            result.skipped["duplicate_name"] += 1
+            continue
         unit = pack_unit(fields.get("unitqty", ""))
         size = _decimal(fields.get("quantity", ""))
         has_pack = unit is not None and size is not None and size > 0
         weighted = fields.get("bisweighted", "") == "1"
+        per: PricePer = "kg" if weighted else "unit"
+        observed_at = local_to_utc(fields.get("priceupdatetime", ""))
+        if barcode is None:
+            if key is not None:
+                seen_internal.add(key)
+            result.internal_items.append(
+                InternalItem(
+                    name=name,
+                    price_agorot=price,
+                    per=per,
+                    is_weighted=weighted,
+                    pack_size=size if has_pack else None,
+                    pack_unit=unit if has_pack else None,
+                    observed_at=observed_at,
+                )
+            )
+            continue
+        seen.add(barcode)
         result.items.append(
             PriceItem(
                 barcode=barcode,
@@ -225,8 +264,8 @@ def parse_price_file(root: Element) -> PriceFile:
                 pack_unit=unit if has_pack else None,
                 is_weighted=weighted,
                 price_agorot=price,
-                per="kg" if weighted else "unit",
-                observed_at=local_to_utc(fields.get("priceupdatetime", "")),
+                per=per,
+                observed_at=observed_at,
             )
         )
     return result
@@ -350,16 +389,46 @@ def price_handler(now: Callable[[], datetime] = _utcnow) -> FileHandler:
             now=at,
             product_ids=product_ids,
         )
-        prices = [
-            OfficialPrice(
-                product_id=product_ids[item.barcode],
+        # Items with no barcode: by their name. The price is a hint only per unit (the medians
+        # it is tested against are per unit).
+        internal_ids = matching_service.match_file_items(
+            session,
+            chain_id,
+            [
+                FileItem(
+                    i.name,
+                    i.price_agorot if i.per == "unit" else None,
+                    is_weighted=i.is_weighted,
+                    pack_size=i.pack_size,
+                    pack_unit=i.pack_unit,
+                )
+                for i in parsed.internal_items
+            ],
+            now=at,
+        )
+
+        def official(product_id: uuid.UUID, item: PriceItem | InternalItem) -> OfficialPrice:
+            return OfficialPrice(
+                product_id=product_id,
                 unit_price_agorot=item.price_agorot,
                 per=item.per,
                 # A time in the future is a clock mistake: it would hide later prices.
                 observed_at=min(item.observed_at, at) if item.observed_at else at,
             )
-            for item in parsed.items
-        ]
+
+        prices = [official(product_ids[item.barcode], item) for item in parsed.items]
+        # One price per product: the items with a barcode come first, and the first one wins.
+        priced = {p.product_id for p in prices}
+        internal_priced = internal_unmatched = internal_same_product = 0
+        for item, product_id in zip(parsed.internal_items, internal_ids, strict=True):
+            if product_id is None:
+                internal_unmatched += 1
+            elif product_id in priced:
+                internal_same_product += 1
+            else:
+                priced.add(product_id)
+                prices.append(official(product_id, item))
+                internal_priced += 1
         new, unchanged = pricing_service.record_official_prices(
             session, store_id, chain_id, prices, root.get(SOURCE_REF_ATTRIBUTE) or None, at
         )
@@ -367,6 +436,10 @@ def price_handler(now: Callable[[], datetime] = _utcnow) -> FileHandler:
             "ingestion_prices",
             parsed.skipped,
             items=len(parsed.items),
+            internal=len(parsed.internal_items),
+            internal_priced=internal_priced,
+            internal_unmatched=internal_unmatched,
+            internal_same_product=internal_same_product,
             observations_new=new,
             unchanged=unchanged,
             aliases_new=aliases_new,

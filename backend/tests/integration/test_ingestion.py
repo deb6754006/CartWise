@@ -132,7 +132,7 @@ def test_a_good_run(engine: Engine, factory: sessionmaker[Session]) -> None:
 
     assert summary.status == "succeeded"
     assert (summary.files_seen, summary.files_ingested, summary.files_skipped) == (3, 3, 0)
-    assert (summary.files_failed, summary.records) == (0, 2 + 3 + 2)
+    assert (summary.files_failed, summary.records) == (0, 2 + 4 + 2)
 
     chain = _rows(engine, "SELECT id, name, gov_chain_code FROM chains")
     assert [(c["name"], c["gov_chain_code"]) for c in chain] == [("רשת בדויה", CODE)]
@@ -145,7 +145,7 @@ def test_a_good_run(engine: Engine, factory: sessionmaker[Session]) -> None:
     assert run["finished_at"] == NOW
     assert run["files_seen"] == 3
     assert run["files_ingested"] == 3
-    assert run["records"] == 7
+    assert run["records"] == 8
     assert run["error"] is None
 
     rows = {row["file_name"]: row for row in _files(engine)}
@@ -159,7 +159,7 @@ def test_a_good_run(engine: Engine, factory: sessionmaker[Session]) -> None:
         assert row["size_bytes"] == len(data)
         assert row["error"] is None
     assert (rows[STORES]["kind"], rows[STORES]["records"]) == ("stores", 2)
-    assert (rows[PRICE]["kind"], rows[PRICE]["records"]) == ("price_full", 3)
+    assert (rows[PRICE]["kind"], rows[PRICE]["records"]) == ("price_full", 4)
     assert (rows[PROMO]["kind"], rows[PROMO]["records"]) == ("promo_full", 2)
 
 

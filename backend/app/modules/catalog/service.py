@@ -429,6 +429,13 @@ def clean_alias_text(text: str) -> str | None:
     return cleaned if norm and len(norm) <= MAX_ALIAS_NORM_LENGTH else None
 
 
+def alias_norm(text: str) -> str | None:
+    """The alias_norm an alias of this text is kept under (clean_alias_text, then normalize_he),
+    or None when clean_alias_text rejects it: one key for an alias, wherever it is compared."""
+    cleaned = clean_alias_text(text)
+    return normalize_he(cleaned) if cleaned is not None else None
+
+
 def upsert_certain_alias(
     session: Session,
     chain_id: uuid.UUID,
@@ -503,6 +510,18 @@ def alias_by_key(
     return AliasRef(*row) if row is not None else None
 
 
+def alias_products_by_norm(
+    session: Session, chain_id: uuid.UUID, norms: Iterable[str]
+) -> dict[str, uuid.UUID]:
+    """alias_norm -> product_id, for the chain's aliases with no barcode among these norms (from
+    alias_norm) that point to a product, in any alias state. A product merged into another is left
+    out. Reads only."""
+    wanted: Sequence[str] = sorted(set(norms))
+    if not wanted:
+        return {}
+    return repository.alias_products_by_norm(session, chain_id, wanted)
+
+
 def upsert_alias(
     session: Session,
     chain_id: uuid.UUID,
@@ -540,6 +559,7 @@ def propose_product(
     pack_unit: PackUnit | None,
     barcode: str | None = None,
     now: datetime | None = None,
+    is_weighted: bool = False,
 ) -> uuid.UUID:
     """A new product, proposed (by matching, for an alias that matches none) until an operator
     approves it, with the alias's valid barcode (from valid_barcode) or none. Returns its id;
@@ -556,7 +576,7 @@ def propose_product(
             "name_norm": normalize_he(cleaned),
             "pack_size": pack_size if has_pack else None,
             "pack_unit": pack_unit if has_pack else None,
-            "is_weighted": False,
+            "is_weighted": is_weighted,
             "status": "proposed",
             "created_at": now if now is not None else datetime.now(UTC),
         },

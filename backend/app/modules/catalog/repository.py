@@ -432,6 +432,28 @@ def alias_by_key(
     ).one_or_none()
 
 
+def alias_products_by_norm(
+    session: Session, chain_id: uuid.UUID, norms: Sequence[str]
+) -> dict[str, uuid.UUID]:
+    """alias_norm -> product_id, for the chain's no-barcode aliases among norms (in any alias
+    state) that point to a product not merged into another."""
+    found: dict[str, uuid.UUID] = {}
+    for start in range(0, len(norms), ALIAS_BATCH):
+        batch = norms[start : start + ALIAS_BATCH]
+        stmt = (
+            select(ProductAlias.alias_norm, Product.id)
+            .join(Product, Product.id == ProductAlias.product_id)
+            .where(
+                ProductAlias.chain_id == chain_id,
+                ProductAlias.barcode.is_(None),
+                ProductAlias.alias_norm.in_(batch),
+                Product.status != "merged_into",
+            )
+        )
+        found.update((norm, product_id) for norm, product_id in session.execute(stmt).all())
+    return found
+
+
 def upsert_alias(
     session: Session,
     *,
