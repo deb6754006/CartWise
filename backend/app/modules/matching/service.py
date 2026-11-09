@@ -11,6 +11,11 @@ match() tries, in order:
 3. The text (Story 4.2): candidates by trigram similarity, each scored by its name, pack size,
    unit and price; certain above a threshold, uncertain below it, and a new product proposed
    when nothing is near.
+
+Votes (Story 4.3): record_vote() keeps a user's vote on an alias and evaluates the alias again in
+the same transaction: a majority for another product moves it there (disputed), and enough votes
+of distinct users for its product make it final. approve_match() is an operator's approval, final
+at once. alias_state_for_product() is what trust reads to cap a reliability level.
 """
 
 import logging
@@ -21,16 +26,18 @@ from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Literal
+from typing import Literal, Protocol
 
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.errors import AppError
 from app.modules.catalog import service as catalog_service
-from app.modules.catalog.models import PackUnit
+from app.modules.catalog.models import AliasState, PackUnit
 from app.modules.catalog.service import AliasRef, ProductCandidate
+from app.modules.identity import service as identity_service
 from app.modules.matching import repository
-from app.modules.matching.models import MAX_KEPT_CANDIDATES
+from app.modules.matching.models import MAX_KEPT_CANDIDATES, VoteKind
 from app.modules.pricing import service as pricing_service
 
 logger = logging.getLogger("app.matching")
@@ -365,15 +372,20 @@ def match(
     2. Otherwise, an existing final or disputed alias of the same key, returned as it is.
     3. Otherwise by text: certain, uncertain (its top 3 candidates kept) or a new product
        proposed, by the thresholds in Settings.
-    A final or disputed alias is never changed. A text that is empty after normalizing, or has
-    no letter or digit to match by, is unmatched, and nothing is written. A proposed product is
-    never a certain match, and an alias proposed before reuses its product. Does not commit."""
+    An alias that has votes (Story 4.3) is returned as it is, before anything else. A final or
+    disputed alias is never changed. A text that is empty after normalizing, or has no letter or
+    digit to match by, is unmatched, and nothing is written. A proposed product is never a
+    certain match, and an alias proposed before reuses its product. Does not commit."""
     had_barcode = bool(barcode and barcode.strip())
     text = catalog_service.clean_alias_text(alias_text)
     if text is None:
         return _log(UNMATCHED, context, had_barcode)
     when = now or datetime.now(UTC)
     code = catalog_service.valid_barcode(barcode) if barcode is not None else None
+    existing = catalog_service.alias_by_key(session, chain_id, text, code)
+    if existing is not None and repository.alias_has_votes(session, existing.id):
+        # People voted on it: a confirm is for its current product, so it is not moved.
+        return _log(_as_stored(existing), context, had_barcode, "memory")
     if code is not None:
         product_id = catalog_service.product_ids_by_barcode(session, [code]).get(code)
         if product_id is not None:
@@ -383,7 +395,6 @@ def match(
             # A final or disputed alias is returned as it is: from memory, not by the barcode.
             path: MatchPath = "memory" if alias.state in _SETTLED else "barcode"
             return _log(_as_stored(alias), context, had_barcode, path)
-    existing = catalog_service.alias_by_key(session, chain_id, text, code)
     if existing is not None and existing.state in _SETTLED:
         return _log(_as_stored(existing), context, had_barcode, "memory")
     if not _trigrams(catalog_service.normalize_he(text)):
@@ -591,3 +602,247 @@ def match_barcodes(
         },
     )
     return new
+
+
+# --- votes (Story 4.3) ---
+
+ALIAS_NOT_FOUND_HE = "הכינוי לא נמצא"
+INVALID_VOTE_HE = "ההצבעה לא תקינה"
+FINAL_CONFIDENCE = Decimal(1)
+
+
+class TrustGate(Protocol):
+    """Which users' votes count toward a match. Replaced by the trust score in Story 7.4,
+    through default_trust_gate(). Asked once per evaluation, for all the voters."""
+
+    def counting(self, session: Session, user_ids: Collection[uuid.UUID]) -> set[uuid.UUID]: ...
+
+
+class AllUsersCount:
+    """Every user's vote counts: until Story 7.4."""
+
+    def counting(self, session: Session, user_ids: Collection[uuid.UUID]) -> set[uuid.UUID]:
+        return set(user_ids)
+
+
+def default_trust_gate() -> TrustGate:
+    """The one place Story 7.4 replaces."""
+    return AllUsersCount()
+
+
+@dataclass(frozen=True, slots=True)
+class VoteOutcome:
+    """The alias after a vote or an approval. changed: its product or state changed."""
+
+    alias_id: uuid.UUID
+    state: AliasState
+    product_id: uuid.UUID | None
+    changed: bool
+
+
+# Counted votes another product needs, at least, to take an alias.
+MIN_MOVE_VOTES = 2
+USER_NOT_FOUND_HE = "המשתמש לא נמצא"
+_VOTE_KINDS: frozenset[str] = frozenset(("confirm", "other", "unknown"))
+
+
+def _alias_not_found() -> AppError:
+    return AppError("alias_not_found", ALIAS_NOT_FOUND_HE, status=404)
+
+
+def _invalid_vote() -> AppError:
+    return AppError("invalid_vote", INVALID_VOTE_HE, status=422)
+
+
+def _check_product(session: Session, product_id: uuid.UUID | None) -> uuid.UUID:
+    """product_id, when it is a product that exists and is not merged into another."""
+    if product_id is None:
+        raise _invalid_vote()
+    status = catalog_service.product_statuses(session, [product_id]).get(product_id)
+    if status is None or status == "merged_into":
+        raise _invalid_vote()
+    return product_id
+
+
+def record_vote(
+    session: Session,
+    alias_id: uuid.UUID,
+    user_id: uuid.UUID,
+    vote: VoteKind,
+    product_id: uuid.UUID | None = None,
+    now: datetime | None = None,
+    trust: TrustGate | None = None,
+) -> VoteOutcome:
+    """Keep a user's vote on an alias (replacing the user's earlier one, but never the user's
+    approval as an operator), then evaluate the alias again, in the same transaction. confirm is
+    for the alias's current product, other for product_id (other for the current product is kept
+    as confirm), unknown for none.
+    Errors: a missing alias is 404 alias_not_found; a user that does not exist or was deleted is
+    404 user_not_found; a vote that is not confirm, other or unknown, confirm on an alias with no
+    product, and other with no product, or one that does not exist or was merged, are 422
+    invalid_vote. trust: default_trust_gate() when None. Does not commit."""
+    if vote not in _VOTE_KINDS:
+        raise _invalid_vote()
+    when = now or datetime.now(UTC)
+    alias = catalog_service.lock_alias(session, alias_id)
+    if alias is None:
+        raise _alias_not_found()
+    if user_id not in identity_service.active_user_ids(session, [user_id]):
+        raise AppError("user_not_found", USER_NOT_FOUND_HE, status=404)
+    stored: uuid.UUID | None = None
+    if vote == "other":
+        target = _check_product(session, product_id)
+        if target == alias.product_id:
+            vote = "confirm"
+        else:
+            stored = target
+    if vote == "confirm" and alias.product_id is None:
+        raise _invalid_vote()
+    repository.upsert_vote(session, alias_id, user_id, vote, stored, "user", when)
+    return evaluate_alias(session, alias_id, trust or default_trust_gate(), when)
+
+
+def _tally(
+    session: Session, alias_id: uuid.UUID, current: uuid.UUID | None, trust: TrustGate
+) -> Counter[uuid.UUID]:
+    # Votes of users (not operators) that count and are not deleted: confirm for the current
+    # product, other for its own, unknown for none. A product that is gone or was merged into
+    # another gets none.
+    votes = repository.user_votes(session, alias_id)
+    voters = identity_service.active_user_ids(session, {user for user, _, _ in votes})
+    if voters:
+        voters &= trust.counting(session, voters)
+    tally: Counter[uuid.UUID] = Counter()
+    for user_id, vote, product_id in votes:
+        if user_id not in voters:
+            continue
+        voted_for = current if vote == "confirm" else product_id if vote == "other" else None
+        if voted_for is not None:
+            tally[voted_for] += 1
+    statuses = catalog_service.product_statuses(session, list(tally))
+    for product in list(tally):
+        if statuses.get(product) in (None, "merged_into"):
+            del tally[product]
+    return tally
+
+
+def evaluate_alias(
+    session: Session, alias_id: uuid.UUID, trust: TrustGate, now: datetime
+) -> VoteOutcome:
+    """Decide the alias by its votes. A final alias is not changed. Otherwise:
+    1. A product other than the current one, with at least MIN_MOVE_VOTES votes, more than the
+       current one and more than half of all the votes counted, takes the alias, disputed. The
+       confirm votes stay with the old product: they are kept as other votes for it.
+    2. Then, at least MATCH_FINAL_VOTES votes for the current product, that are also more than
+       half of all the votes counted, make the alias final.
+    Only votes with role user count, of users the trust gate counts and not deleted, for
+    products that are not gone or merged; unknown is no vote. A missing alias is 404
+    alias_not_found. Does not commit."""
+    alias = catalog_service.lock_alias(session, alias_id)
+    if alias is None:
+        raise _alias_not_found()
+    if alias.state == "final":
+        return VoteOutcome(alias.id, alias.state, alias.product_id, False)
+    product_id: uuid.UUID | None = alias.product_id
+    state: AliasState = alias.state
+    confidence = alias.confidence
+    tally = _tally(session, alias_id, product_id, trust)
+    total = sum(tally.values())
+    current_votes = tally[product_id] if product_id is not None else 0
+    leaders = [
+        other
+        for other, count in tally.items()
+        if other != product_id
+        and count >= MIN_MOVE_VOTES
+        and count > current_votes
+        and 2 * count > total
+    ]
+    if leaders:
+        # More than half of all the votes: there is only one.
+        new_product = leaders[0]
+        repository.confirms_to_other(session, alias_id, product_id, now)
+        product_id, state, confidence = new_product, "disputed", None
+        current_votes = tally[new_product]
+    if (
+        product_id is not None
+        and current_votes >= get_settings().MATCH_FINAL_VOTES
+        and 2 * current_votes > total
+    ):
+        state, confidence = "final", FINAL_CONFIDENCE
+    changed = (product_id, state) != (alias.product_id, alias.state)
+    if changed and product_id is not None:
+        catalog_service.set_alias_resolution(session, alias_id, product_id, state, confidence, now)
+        # No user: the alias, its state and the counts only.
+        logger.info(
+            "matching_vote_evaluated",
+            extra={
+                "alias_id": str(alias_id),
+                "state": state,
+                "votes": total,
+                "product_votes": current_votes,
+            },
+        )
+    return VoteOutcome(alias_id, state, product_id, changed)
+
+
+def approve_match(
+    session: Session,
+    alias_id: uuid.UUID,
+    operator_user_id: uuid.UUID,
+    product_id: uuid.UUID | None = None,
+    now: datetime | None = None,
+) -> VoteOutcome:
+    """An operator's approval: the alias is final at once, for product_id (or its current
+    product), with confidence 1, whatever its state (a final alias for another product
+    included). Kept as the operator's vote, role operator. The caller checks that the user is an
+    operator (Story 4.5). A missing alias is 404 alias_not_found; a product that does not exist
+    or was merged (or none, for an alias with no product) is 422 invalid_vote. Does not
+    commit."""
+    when = now or datetime.now(UTC)
+    alias = catalog_service.lock_alias(session, alias_id)
+    if alias is None:
+        raise _alias_not_found()
+    target = _check_product(session, product_id if product_id is not None else alias.product_id)
+    moved = target != alias.product_id
+    if moved:
+        # The confirm votes stay with the product they confirmed.
+        repository.confirms_to_other(session, alias_id, alias.product_id, when)
+        repository.upsert_vote(
+            session, alias_id, operator_user_id, "other", target, "operator", when
+        )
+    else:
+        repository.upsert_vote(
+            session, alias_id, operator_user_id, "confirm", None, "operator", when
+        )
+    changed = moved or alias.state != "final"
+    if changed or alias.confidence != FINAL_CONFIDENCE:
+        catalog_service.set_alias_resolution(
+            session, alias_id, target, "final", FINAL_CONFIDENCE, when
+        )
+    if changed:
+        logger.info("matching_match_approved", extra={"alias_id": str(alias_id), "state": "final"})
+    return VoteOutcome(alias_id, "final", target, changed)
+
+
+# From the weakest to the strongest.
+_STATE_ORDER: tuple[AliasState, ...] = ("uncertain", "disputed", "certain", "final")
+
+
+def alias_state_for_product(
+    session: Session, chain_id: uuid.UUID, product_id: uuid.UUID
+) -> AliasState | None:
+    """The weakest state of the chain's aliases that point to this product (uncertain, then
+    disputed, certain, final), for trust to cap a reliability level while a match is not final
+    (Epic 7). None when there is no alias (a product with a barcode and no alias): the caller
+    takes it as certain. Reads only."""
+    states = catalog_service.alias_states_for_product(session, chain_id, product_id)
+    for state in _STATE_ORDER:
+        if state in states:
+            return state
+    return None
+
+
+@identity_service.register_deletion_hook
+def _delete_votes(session: Session, user_id: uuid.UUID) -> None:
+    """A deleted user's votes go. Aliases are not evaluated again: a final one stays final."""
+    repository.delete_user_votes(session, user_id)

@@ -552,6 +552,39 @@ def upsert_alias(
     return AliasRef(*row)
 
 
+def lock_alias(session: Session, alias_id: uuid.UUID) -> AliasRef | None:
+    """The alias, locked (FOR UPDATE) until the transaction ends, or None when there is none."""
+    row = repository.lock_alias(session, alias_id)
+    return AliasRef(*row) if row is not None else None
+
+
+def set_alias_resolution(
+    session: Session,
+    alias_id: uuid.UUID,
+    product_id: uuid.UUID,
+    state: AliasState,
+    confidence: Decimal | None,
+    now: datetime | None = None,
+) -> None:
+    """Set the alias's product, state and confidence, as votes or an operator decided (Story
+    4.3). For matching only: catalog does not decide what an alias matches. Does not commit."""
+    repository.set_alias_resolution(
+        session,
+        alias_id,
+        product_id,
+        state,
+        confidence,
+        now if now is not None else datetime.now(UTC),
+    )
+
+
+def alias_states_for_product(
+    session: Session, chain_id: uuid.UUID, product_id: uuid.UUID
+) -> set[AliasState]:
+    """The states of the chain's aliases that point to this product (empty: none do)."""
+    return repository.alias_states_for_product(session, chain_id, product_id)  # type: ignore[return-value]
+
+
 def propose_product(
     session: Session,
     name: str,

@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     MATCH_MIN_GAP: float = Field(default=0.10, ge=0, le=1)
     # With no candidate scoring at least this, a new product is proposed.
     MATCH_NEW_PRODUCT_BELOW: float = Field(default=0.30, ge=0, le=1)
+    # Votes of distinct users for an alias's product that make the match final (Story 4.3).
+    MATCH_FINAL_VOTES: int = Field(default=3, ge=1, le=20)
 
     @model_validator(mode="after")
     def _new_product_below_certain(self) -> Self:

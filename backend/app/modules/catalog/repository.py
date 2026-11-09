@@ -514,6 +514,40 @@ def upsert_alias(
     ).one()
 
 
+def lock_alias(session: Session, alias_id: uuid.UUID) -> Any:
+    """(id, state, product_id, confidence) of the alias, locked FOR UPDATE until the transaction
+    ends, or None."""
+    return session.execute(
+        select(*_ALIAS_REF).where(ProductAlias.id == alias_id).with_for_update()
+    ).one_or_none()
+
+
+def set_alias_resolution(
+    session: Session,
+    alias_id: uuid.UUID,
+    product_id: uuid.UUID,
+    state: str,
+    confidence: Decimal | None,
+    now: datetime,
+) -> None:
+    session.execute(
+        update(ProductAlias)
+        .where(ProductAlias.id == alias_id)
+        .values(product_id=product_id, state=state, confidence=confidence, updated_at=now)
+    )
+
+
+def alias_states_for_product(
+    session: Session, chain_id: uuid.UUID, product_id: uuid.UUID
+) -> set[str]:
+    stmt = (
+        select(ProductAlias.state)
+        .where(ProductAlias.chain_id == chain_id, ProductAlias.product_id == product_id)
+        .distinct()
+    )
+    return set(session.execute(stmt).scalars().all())
+
+
 def insert_product(session: Session, row: Mapping[str, Any]) -> uuid.UUID:
     """Insert one product and return its id. When its barcode already has a product (another
     transaction created it), nothing is inserted and that product's id is returned."""

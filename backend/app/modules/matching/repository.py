@@ -5,11 +5,18 @@ from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from app.modules.matching.models import MatchCandidate
+from app.core.ids import new_id
+from app.modules.matching.models import (
+    VOTE_KEY_CONSTRAINT,
+    MatchCandidate,
+    MatchVote,
+    VoteKind,
+    VoteRole,
+)
 
 
 def replace_candidates(
@@ -45,3 +52,74 @@ def replace_candidates(
         },
     )
     session.execute(stmt)
+
+
+def upsert_vote(
+    session: Session,
+    alias_id: uuid.UUID,
+    user_id: uuid.UUID,
+    vote: VoteKind,
+    product_id: uuid.UUID | None,
+    role: VoteRole,
+    now: datetime,
+) -> None:
+    """The user's vote on the alias: inserted, or replacing the one the user cast before. A
+    vote with role user does not replace one with role operator."""
+    stmt = insert(MatchVote).values(
+        id=new_id(),
+        alias_id=alias_id,
+        user_id=user_id,
+        product_id=product_id,
+        vote=vote,
+        role=role,
+        created_at=now,
+        updated_at=now,
+    )
+    stmt = stmt.on_conflict_do_update(
+        constraint=VOTE_KEY_CONSTRAINT,
+        set_={
+            "product_id": stmt.excluded.product_id,
+            "vote": stmt.excluded.vote,
+            "role": stmt.excluded.role,
+            "updated_at": stmt.excluded.updated_at,
+        },
+        # A user's vote never replaces the same person's approval as an operator.
+        where=(MatchVote.role == "user") if role == "user" else None,
+    )
+    session.execute(stmt)
+
+
+def alias_has_votes(session: Session, alias_id: uuid.UUID) -> bool:
+    stmt = select(MatchVote.id).where(MatchVote.alias_id == alias_id).limit(1)
+    return session.execute(stmt).first() is not None
+
+
+def user_votes(
+    session: Session, alias_id: uuid.UUID
+) -> Sequence[tuple[uuid.UUID, str, uuid.UUID | None]]:
+    """(user_id, vote, product_id) of each vote on the alias with role user."""
+    stmt = select(MatchVote.user_id, MatchVote.vote, MatchVote.product_id).where(
+        MatchVote.alias_id == alias_id, MatchVote.role == "user"
+    )
+    return [(r[0], r[1], r[2]) for r in session.execute(stmt).all()]
+
+
+def confirms_to_other(
+    session: Session, alias_id: uuid.UUID, product_id: uuid.UUID | None, now: datetime
+) -> None:
+    """The alias's confirm votes become votes for product_id (the product they confirmed), as
+    other; with no product, unknown."""
+    values: dict[str, object] = (
+        {"vote": "other", "product_id": product_id}
+        if product_id is not None
+        else {"vote": "unknown", "product_id": None}
+    )
+    session.execute(
+        update(MatchVote)
+        .where(MatchVote.alias_id == alias_id, MatchVote.vote == "confirm")
+        .values(**values, updated_at=now)
+    )
+
+
+def delete_user_votes(session: Session, user_id: uuid.UUID) -> None:
+    session.execute(delete(MatchVote).where(MatchVote.user_id == user_id))

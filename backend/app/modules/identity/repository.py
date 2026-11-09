@@ -270,3 +270,11 @@ def move_user_prefs(session: Session, from_subject: uuid.UUID, to_subject: uuid.
 def delete_user_prefs(session: Session, subject_id: uuid.UUID) -> None:
     _lock_subject_prefs(session, subject_id)
     session.execute(delete(UserPrefs).where(UserPrefs.subject_id == subject_id))
+
+
+def active_user_ids(session: Session, ids: Collection[uuid.UUID]) -> set[uuid.UUID]:
+    """The ids among these of users that exist and are not deleted."""
+    if not ids:
+        return set()
+    stmt = select(User.id).where(User.id.in_(list(ids)), User.deleted_at.is_(None))
+    return set(session.execute(stmt).scalars().all())

@@ -334,3 +334,25 @@ def test_json_formatter_core_fields_not_overwritten() -> None:
     assert out["msg"] == "hello"
     assert out["ts"] != "spoof"
     assert out["custom"] == 1
+
+
+# --- deletion hooks ------------------------------------------------------------
+
+
+def test_loading_the_app_registers_the_vote_deletion_hook() -> None:
+    """Only app.main is imported: matching's hook is registered by loading the app itself."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    check = (
+        "import app.main\n"
+        "from app.modules.identity import service as s\n"
+        "assert any(h.__module__ == 'app.modules.matching.service' "
+        "and h.__name__ == '_delete_votes' for h in s._DELETION_HOOKS), s._DELETION_HOOKS\n"
+    )
+    backend = Path(__file__).resolve().parents[2]
+    result = subprocess.run(  # noqa: S603
+        [sys.executable, "-c", check], cwd=backend, capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stderr

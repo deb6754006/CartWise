@@ -131,6 +131,11 @@ def user_for_firebase_uid(session: Session, firebase_uid: str) -> UserRef | None
     return UserRef(id=user.id, deleted=user.deleted_at is not None)
 
 
+def active_user_ids(session: Session, ids: Collection[uuid.UUID]) -> set[uuid.UUID]:
+    """The ids among these of users that exist and are not deleted. Reads only."""
+    return repository.active_user_ids(session, ids)
+
+
 def device_already_linked() -> AppError:
     return AppError("device_already_linked", DEVICE_ALREADY_LINKED_HE, status=409)
 

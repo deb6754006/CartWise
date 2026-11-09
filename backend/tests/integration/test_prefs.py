@@ -45,7 +45,7 @@ def engine(prefs_url: str) -> Iterator[Engine]:
 @pytest.fixture
 def factory(engine: Engine) -> sessionmaker[Session]:
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE user_prefs, devices, users"))
+        conn.execute(text("TRUNCATE match_votes, user_prefs, devices, users"))
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
