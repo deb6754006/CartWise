@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-28-2026 12:00
-last_updated: 11-03-2026 19:10
+last_updated: 11-09-2026 09:00
 project: CartWise
 project_key: NOKEY
 tracking_system: file-system
@@ -65,6 +65,7 @@ development_status:
   3-3-סניפים-ומיקומים-fr-14-p0: done
   3-4-מחירים-ומבצעים-fr-15-p0: done
   3-5-ניטור-תקינות-fr-16-p1: done
+  # 3.6 נבנית אחרי Story 4.2: המסלול של פריט בלי ברקוד צריך את matching.service (Epic 4). המסלול של ברקוד כבר נבנה ב-3.4.
   3-6-התאמת-מוצרים-מקבצים-fr-17-p0: backlog
   epic-3-retrospective: optional
 
