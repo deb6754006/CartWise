@@ -67,15 +67,14 @@ class _NoSession:
 @pytest.mark.parametrize(
     ("text", "barcode"),
     [
-        pytest.param("חלב בדוי", None, id="no-barcode"),
-        pytest.param("חלב בדוי", "123", id="short-barcode"),
-        pytest.param("חלב בדוי", "00000000", id="zeros-barcode"),
-        pytest.param("חלב בדוי", "abc", id="letters-barcode"),
-        pytest.param("חלב בדוי", "", id="empty-barcode"),
-        pytest.param("   ", "7290000000001", id="empty-text"),
+        pytest.param("   ", "7290000000001", id="blank-with-barcode"),
+        pytest.param("   ", None, id="blank-no-barcode"),
+        pytest.param("\"'", None, id="quotes-only"),
+        pytest.param("", "123", id="empty-bad-barcode"),
     ],
 )
 def test_unmatched_does_not_touch_the_database(text: str, barcode: str | None) -> None:
+    # Since Story 4.2 any other text is matched by text: only an empty one is unmatched.
     session: Any = _NoSession()
     result = match(session, text, uuid.uuid4(), barcode, MatchContext("receipt", 990))
     assert result == UNMATCHED
@@ -91,7 +90,8 @@ def test_match_barcodes_with_no_valid_barcode_does_not_touch_the_database() -> N
 def test_the_match_log_has_no_alias_text(caplog: pytest.LogCaptureFixture) -> None:
     session: Any = _NoSession()
     with caplog.at_level("INFO", logger="app.matching"):
-        match(session, "חלב סודי", uuid.uuid4(), "123", MatchContext("official_file"))
+        # Too long to be an alias: unmatched, with no database.
+        match(session, "חלב סודי " * 100, uuid.uuid4(), "123", MatchContext("official_file"))
     [record] = [r for r in caplog.records if r.getMessage() == "matching_match"]
     assert (record.state, record.source, record.had_barcode) == (  # type: ignore[attr-defined]
         "unmatched",

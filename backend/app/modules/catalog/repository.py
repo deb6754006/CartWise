@@ -6,7 +6,18 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from sqlalchemy import and_, case, cast, func, literal_column, or_, select, update
+from sqlalchemy import (
+    Text,
+    and_,
+    case,
+    cast,
+    func,
+    literal,
+    literal_column,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -401,3 +412,149 @@ def upsert_certain_aliases(session: Session, rows: Sequence[Mapping[str, Any]]) 
         flags = session.execute(stmt.returning(literal_column("xmax = 0"))).scalars().all()
         inserted += sum(1 for flag in flags if flag)
     return inserted
+
+
+def _alias_key(chain_id: uuid.UUID, alias_norm: str, barcode: str | None) -> Any:
+    # NULL is one barcode value in the key (NULLS NOT DISTINCT).
+    return and_(
+        ProductAlias.chain_id == chain_id,
+        ProductAlias.alias_norm == alias_norm,
+        ProductAlias.barcode.is_not_distinct_from(barcode),
+    )
+
+
+def alias_by_key(
+    session: Session, chain_id: uuid.UUID, alias_norm: str, barcode: str | None
+) -> Any:
+    """(id, state, product_id, confidence) of the alias of this key, or None."""
+    return session.execute(
+        select(*_ALIAS_REF).where(_alias_key(chain_id, alias_norm, barcode))
+    ).one_or_none()
+
+
+def upsert_alias(
+    session: Session,
+    *,
+    chain_id: uuid.UUID,
+    alias_text: str,
+    alias_norm: str,
+    barcode: str | None,
+    state: Literal["certain", "uncertain"],
+    product_id: uuid.UUID,
+    confidence: Decimal | None,
+    now: datetime,
+) -> Any:
+    """Insert the alias, or set an existing one of the same key to this state, product and
+    confidence. Not changed: a final or disputed alias, and a certain one for product_id when the
+    new state is uncertain. Returns the alias after that (id, state, product_id, confidence)."""
+    stmt = insert(ProductAlias).values(
+        id=new_id(),
+        chain_id=chain_id,
+        alias_text=alias_text,
+        alias_norm=alias_norm,
+        barcode=barcode,
+        product_id=product_id,
+        state=state,
+        confidence=confidence,
+        created_at=now,
+        updated_at=now,
+    )
+    excluded = stmt.excluded
+    stmt = stmt.on_conflict_do_update(
+        constraint=ALIAS_KEY_CONSTRAINT,
+        set_={
+            "product_id": excluded.product_id,
+            "state": excluded.state,
+            "confidence": excluded.confidence,
+            "updated_at": excluded.updated_at,
+        },
+        where=and_(
+            ProductAlias.state.not_in(_SETTLED_STATES),
+            # A certain alias does not go down to uncertain for the same product.
+            or_(
+                ProductAlias.state != "certain",
+                excluded.state != "uncertain",
+                ProductAlias.product_id.is_distinct_from(excluded.product_id),
+            ),
+            or_(
+                ProductAlias.state != excluded.state,
+                ProductAlias.product_id.is_distinct_from(excluded.product_id),
+                ProductAlias.confidence.is_distinct_from(excluded.confidence),
+            ),
+        ),
+    )
+    row = session.execute(stmt.returning(*_ALIAS_REF)).one_or_none()
+    if row is not None:
+        return row
+    # The alias exists and was left as it is.
+    return session.execute(
+        select(*_ALIAS_REF).where(_alias_key(chain_id, alias_norm, barcode))
+    ).one()
+
+
+def insert_product(session: Session, row: Mapping[str, Any]) -> uuid.UUID:
+    """Insert one product and return its id. When its barcode already has a product (another
+    transaction created it), nothing is inserted and that product's id is returned."""
+    inserted = session.execute(
+        insert(Product)
+        .values(**row)
+        .on_conflict_do_nothing(index_elements=[Product.barcode])
+        .returning(Product.id)
+    ).scalar_one_or_none()
+    if inserted is not None:
+        return inserted
+    return session.execute(select(Product.id).where(Product.barcode == row["barcode"])).scalar_one()
+
+
+def product_statuses(session: Session, ids: Collection[uuid.UUID]) -> dict[uuid.UUID, str]:
+    if not ids:
+        return {}
+    stmt = select(Product.id, Product.status).where(Product.id.in_(list(ids)))
+    return {row[0]: row[1] for row in session.execute(stmt).all()}
+
+
+def product_candidates(
+    session: Session, alias_norm: str, threshold: float, limit: int
+) -> Sequence[tuple[uuid.UUID, str, Decimal | None, str | None, str, float]]:
+    """Up to limit products whose name_norm is trigram-similar to alias_norm (at least
+    threshold), most similar first: (id, name_norm, pack_size, pack_unit, status, similarity). A
+    product merged into another is not one."""
+    setting = "pg_trgm.similarity_threshold"
+    # None until pg_trgm is loaded in this connection: restoring it then resets the default.
+    previous = session.execute(select(func.current_setting(setting, True))).scalar_one()
+    # % uses the trigram index, with this threshold; restored after the query.
+    session.execute(select(func.set_config(setting, str(threshold), True)))
+    similarity = func.similarity(Product.name_norm, alias_norm)
+    stmt = (
+        select(
+            Product.id,
+            Product.name_norm,
+            Product.pack_size,
+            Product.pack_unit,
+            Product.status,
+            similarity,
+        )
+        .where(Product.name_norm.op("%")(alias_norm), Product.status != "merged_into")
+        .order_by(similarity.desc(), Product.id)
+        .limit(limit)
+    )
+    try:
+        rows = session.execute(stmt).all()
+    finally:
+        session.execute(select(func.set_config(setting, literal(previous, Text), True)))
+    return [(r[0], r[1], r[2], r[3], r[4], float(r[5])) for r in rows]
+
+
+def sample_certain_barcode_aliases(
+    session: Session, limit: int, seed: str
+) -> Sequence[tuple[uuid.UUID, str, uuid.UUID, str]]:
+    """Up to limit certain aliases with a barcode and a product: (id, alias_norm, product_id,
+    the product's name_norm). The same seed picks the same aliases, while they exist."""
+    stmt = (
+        select(ProductAlias.id, ProductAlias.alias_norm, Product.id, Product.name_norm)
+        .join(Product, Product.id == ProductAlias.product_id)
+        .where(ProductAlias.state == "certain", ProductAlias.barcode.is_not(None))
+        .order_by(func.md5(func.concat(seed, cast(ProductAlias.id, Text))), ProductAlias.id)
+        .limit(limit)
+    )
+    return [(r[0], r[1], r[2], r[3]) for r in session.execute(stmt).all()]

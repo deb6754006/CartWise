@@ -49,7 +49,7 @@ def factory(engine: Engine) -> sessionmaker[Session]:
     with engine.begin() as conn:
         conn.execute(
             text(
-                "TRUNCATE product_aliases, promotion_products, promotions, "
+                "TRUNCATE match_candidates, product_aliases, promotion_products, promotions, "
                 "price_observations, products, ingestion_alerts, "
                 "ingestion_files, ingestion_runs, stores, user_clubs, clubs, chains"
             )
@@ -161,20 +161,31 @@ def test_another_chain(engine: Engine, factory: sessionmaker[Session], chain: uu
 def test_a_barcode_with_no_product(
     engine: Engine, factory: sessionmaker[Session], chain: uuid.UUID
 ) -> None:
+    # Matched by text since Story 4.2 (see test_matching_text.py): no product gets the barcode.
     _product(factory, MILK)
-    assert _match(factory, "מוצר לא מוכר", chain, UNKNOWN) == UNMATCHED
-    assert _aliases(engine) == []
+    result = _match(factory, "מוצר לא מוכר", chain, UNKNOWN)
+    assert result.state != "unmatched"
+    [alias] = _aliases(engine)
+    assert (alias["id"], alias["barcode"]) == (result.alias_id, UNKNOWN)
     with engine.connect() as conn:
-        assert conn.execute(text("SELECT count(*) FROM products")).scalar_one() == 1
+        assert (
+            conn.execute(
+                text("SELECT count(*) FROM products WHERE barcode = :b"), {"b": UNKNOWN}
+            ).scalar_one()
+            == 0
+        )
 
 
 @pytest.mark.parametrize("barcode", ["123", "00000000", "abc", "", None])
 def test_no_valid_barcode(
     engine: Engine, factory: sessionmaker[Session], chain: uuid.UUID, barcode: str | None
 ) -> None:
+    # Matched by text since Story 4.2: the alias is saved with no barcode.
     _product(factory, MILK)
-    assert _match(factory, "חלב 3% 1ל", chain, barcode) == UNMATCHED
-    assert _aliases(engine) == []
+    result = _match(factory, "חלב 3% 1ל", chain, barcode)
+    assert result.state != "unmatched"
+    [alias] = _aliases(engine)
+    assert (alias["id"], alias["barcode"]) == (result.alias_id, None)
 
 
 def test_an_empty_text(engine: Engine, factory: sessionmaker[Session], chain: uuid.UUID) -> None:

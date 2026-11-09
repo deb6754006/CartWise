@@ -64,6 +64,19 @@ class Settings(BaseSettings):
     ALERT_EMAIL_FROM: str = ""
     # One address, or several separated by commas.
     ALERT_EMAIL_TO: str = ""
+    # Matching by text (Story 4.2). CERTAIN_THRESHOLD is provisional: it is calibrated with
+    # scripts/eval_matching.py to the lowest value that gives a precision of at least 0.9.
+    MATCH_CERTAIN_THRESHOLD: float = Field(default=0.85, ge=0, le=1)
+    # A certain match also leads the second candidate by at least this much.
+    MATCH_MIN_GAP: float = Field(default=0.10, ge=0, le=1)
+    # With no candidate scoring at least this, a new product is proposed.
+    MATCH_NEW_PRODUCT_BELOW: float = Field(default=0.30, ge=0, le=1)
+
+    @model_validator(mode="after")
+    def _new_product_below_certain(self) -> Self:
+        if self.MATCH_NEW_PRODUCT_BELOW >= self.MATCH_CERTAIN_THRESHOLD:
+            raise ValueError("MATCH_NEW_PRODUCT_BELOW must be less than MATCH_CERTAIN_THRESHOLD")
+        return self
 
     @model_validator(mode="after")
     def _stale_after_the_interval(self) -> Self:

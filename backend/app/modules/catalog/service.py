@@ -11,13 +11,19 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
 from app.core.ids import new_id
 from app.modules.catalog import repository
-from app.modules.catalog.models import AliasState, LocationSource, PackUnit, StoreStatus
+from app.modules.catalog.models import (
+    AliasState,
+    LocationSource,
+    PackUnit,
+    ProductStatus,
+    StoreStatus,
+)
 
 # Search needs this many characters, after normalizing.
 MIN_BRAND_SEARCH_LENGTH = 2
@@ -486,3 +492,123 @@ def ensure_certain_aliases(
         )
     # Sorted by key, so two runs inserting the same aliases at once take the locks in one order.
     return repository.upsert_certain_aliases(session, [first[key] for key in sorted(first)])
+
+
+def alias_by_key(
+    session: Session, chain_id: uuid.UUID, alias_text: str, barcode: str | None
+) -> AliasRef | None:
+    """The chain's alias of this text and barcode (None: no barcode), if there is one. alias_text
+    must come from clean_alias_text."""
+    row = repository.alias_by_key(session, chain_id, normalize_he(alias_text), barcode)
+    return AliasRef(*row) if row is not None else None
+
+
+def upsert_alias(
+    session: Session,
+    chain_id: uuid.UUID,
+    alias_text: str,
+    barcode: str | None,
+    state: Literal["certain", "uncertain"],
+    product_id: uuid.UUID,
+    confidence: Decimal | None,
+    now: datetime | None = None,
+) -> AliasRef:
+    """The chain's alias of this text and barcode (None: no barcode), created or set to this
+    state, product and confidence. A final or disputed alias is not changed, and a certain alias
+    for product_id does not go down to uncertain. alias_text must come from clean_alias_text.
+
+    For matching only: catalog does not decide what an alias matches. Does not commit.
+    """
+    row = repository.upsert_alias(
+        session,
+        chain_id=chain_id,
+        alias_text=alias_text,
+        alias_norm=normalize_he(alias_text),
+        barcode=barcode,
+        state=state,
+        product_id=product_id,
+        confidence=confidence,
+        now=now if now is not None else datetime.now(UTC),
+    )
+    return AliasRef(*row)
+
+
+def propose_product(
+    session: Session,
+    name: str,
+    pack_size: Decimal | None,
+    pack_unit: PackUnit | None,
+    barcode: str | None = None,
+    now: datetime | None = None,
+) -> uuid.UUID:
+    """A new product, proposed (by matching, for an alias that matches none) until an operator
+    approves it, with the alias's valid barcode (from valid_barcode) or none. Returns its id;
+    when the barcode already has a product (created meanwhile), that product's id instead.
+    Does not commit."""
+    cleaned = _clean(name)
+    has_pack = pack_size is not None and pack_unit is not None and pack_size > 0
+    return repository.insert_product(
+        session,
+        {
+            "id": new_id(),
+            "barcode": barcode,
+            "name": cleaned,
+            "name_norm": normalize_he(cleaned),
+            "pack_size": pack_size if has_pack else None,
+            "pack_unit": pack_unit if has_pack else None,
+            "is_weighted": False,
+            "status": "proposed",
+            "created_at": now if now is not None else datetime.now(UTC),
+        },
+    )
+
+
+# Candidates by trigram similarity: low, so that a weak candidate is still scored (and a new
+# product proposed only when nothing is near).
+CANDIDATE_SIMILARITY_THRESHOLD = 0.2
+MAX_CANDIDATES = 20
+
+
+@dataclass(frozen=True, slots=True)
+class ProductCandidate:
+    """A product that may be an alias's, with the trigram similarity of its name_norm to the
+    alias's alias_norm."""
+
+    id: uuid.UUID
+    name_norm: str
+    pack_size: Decimal | None
+    pack_unit: PackUnit | None
+    status: ProductStatus
+    similarity: float
+
+
+def product_candidates(
+    session: Session, alias_norm: str, limit: int = MAX_CANDIDATES
+) -> list[ProductCandidate]:
+    """Up to limit products (any status but merged_into, proposed included) whose name_norm is
+    trigram-similar to alias_norm, most similar first. Uses the trigram index."""
+    rows = repository.product_candidates(session, alias_norm, CANDIDATE_SIMILARITY_THRESHOLD, limit)
+    return [ProductCandidate(*row) for row in rows]  # type: ignore[arg-type]
+
+
+def product_statuses(
+    session: Session, ids: Collection[uuid.UUID]
+) -> dict[uuid.UUID, ProductStatus]:
+    """The status of each of these products that exists."""
+    return repository.product_statuses(session, ids)  # type: ignore[return-value]
+
+
+@dataclass(frozen=True, slots=True)
+class AliasSample:
+    id: uuid.UUID
+    alias_norm: str
+    product_id: uuid.UUID
+    product_name_norm: str
+
+
+def sample_certain_barcode_aliases(session: Session, limit: int, seed: str) -> list[AliasSample]:
+    """Up to limit certain aliases with a barcode (whose product is known), picked by seed: the
+    same seed picks the same ones. Reads only."""
+    return [
+        AliasSample(*row) for row in repository.sample_certain_barcode_aliases(session, limit, seed)
+    ]

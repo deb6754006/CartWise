@@ -5,7 +5,7 @@ from collections.abc import Collection, Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Text, and_, bindparam, delete, func, select, text, update
+from sqlalchemy import Text, Uuid, and_, bindparam, delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import ARRAY, distinct_on, insert
 from sqlalchemy.orm import Session
 
@@ -163,3 +163,23 @@ def current_prices(
     )
     rows = session.execute(stmt, {"store_id": store_id, "price_type": price_type}).all()
     return {row[0]: (row[1], row[2], row[3], row[4]) for row in rows}
+
+
+def median_prices(
+    session: Session, product_ids: Sequence[uuid.UUID], price_type: PriceType
+) -> dict[uuid.UUID, float]:
+    """product_id -> the median unit_price_agorot of its current prices of this type per unit, in
+    all stores, from the view. Prices per kg are left out (a weighted product has none), and so
+    is a product with no price."""
+    stmt = text(
+        "SELECT product_id, percentile_cont(0.5) WITHIN GROUP (ORDER BY unit_price_agorot) "
+        "FROM current_prices WHERE price_type = :price_type AND per = 'unit' "
+        "AND product_id = ANY(:ids) "
+        "GROUP BY product_id"
+    ).bindparams(bindparam("ids", type_=ARRAY(Uuid())))
+    found: dict[uuid.UUID, float] = {}
+    for start in range(0, len(product_ids), BATCH):
+        params = {"ids": list(product_ids[start : start + BATCH]), "price_type": price_type}
+        for product_id, median in session.execute(stmt, params).all():
+            found[product_id] = float(median)
+    return found

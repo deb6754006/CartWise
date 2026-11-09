@@ -32,10 +32,12 @@ STORE_STATUSES: tuple[StoreStatus, ...] = ("active", "needs_location", "online")
 LOCATION_SOURCES: tuple[LocationSource, ...] = ("geocoded", "manual")
 
 PackUnit = Literal["unit", "g", "kg", "ml", "l"]
-ProductStatus = Literal["active"]
+ProductStatus = Literal["active", "proposed", "merged_into"]
 
 PACK_UNITS: tuple[PackUnit, ...] = ("unit", "g", "kg", "ml", "l")
-PRODUCT_STATUSES: tuple[ProductStatus, ...] = ("active",)
+# proposed: created by matching for an alias that matches no product (Story 4.2), until an
+# operator approves it. merged_into: a duplicate merged into another product (Story 4.5).
+PRODUCT_STATUSES: tuple[ProductStatus, ...] = ("active", "proposed", "merged_into")
 
 
 def _in(column: str, values: tuple[str, ...]) -> str:

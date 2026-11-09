@@ -204,3 +204,13 @@ def current_prices(
 def refresh_current_prices(session: Session) -> None:
     """Refresh current_prices. Does not commit: the caller owns the transaction."""
     repository.refresh_current_prices(session)
+
+
+def median_prices(session: Session, product_ids: Collection[uuid.UUID]) -> dict[uuid.UUID, int]:
+    """The median of each product's current regular prices per unit, in agorot, in all stores, as
+    of the last refresh. A product with no such price is left out: prices per kg are not used, so
+    a weighted product gets no price test in matching for now."""
+    if not product_ids:
+        return {}
+    medians = repository.median_prices(session, sorted(set(product_ids)), "regular")
+    return {product_id: round(median) for product_id, median in medians.items()}
