@@ -54,3 +54,5 @@ testpaths = ["tests"]
 addopts = "-rs"
 pythonpath = ["."]
 markers = ["integration: requires Docker (testcontainers)"]
+# A test that hangs dumps every thread's stack after this many seconds.
+faulthandler_timeout = 300

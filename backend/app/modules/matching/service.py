@@ -36,13 +36,16 @@ from app.core.config import get_settings
 from app.core.errors import AppError
 from app.modules.catalog import service as catalog_service
 from app.modules.catalog.models import AliasState, PackUnit
-from app.modules.catalog.service import AliasRef, ProductCandidate
+from app.modules.catalog.service import AdminAlias, AliasRef, ProductCandidate
 from app.modules.identity import service as identity_service
 from app.modules.matching import repository
 from app.modules.matching.models import MAX_KEPT_CANDIDATES, VoteKind
 from app.modules.pricing import service as pricing_service
 
 logger = logging.getLogger("app.matching")
+# The match admin tool's audit log (Story 4.5): the operator's internal user_id may be in it,
+# alias text never.
+admin_logger = logging.getLogger("app.admin")
 
 # final and disputed are an existing alias's state, returned as it is stored: settled by votes or
 # by an operator (Story 4.3), and not changed by matching.
@@ -385,6 +388,25 @@ def match(
     barcode: str | None = None,
     context: MatchContext | None = None,
     now: datetime | None = None,
+    *,
+    count: bool = True,
+) -> MatchResult:
+    """As _match_one; and the alias it returns (existing or written) was seen once more: its
+    occurrences go up by 1 (Story 4.5), for the operator's queue. count=False leaves that to the
+    caller (match_file_items counts all its aliases at once). Does not commit."""
+    result = _match_one(session, alias_text, chain_id, barcode, context, now)
+    if count and result.alias_id is not None:
+        catalog_service.bump_alias_occurrences(session, [result.alias_id])
+    return result
+
+
+def _match_one(
+    session: Session,
+    alias_text: str,
+    chain_id: uuid.UUID,
+    barcode: str | None = None,
+    context: MatchContext | None = None,
+    now: datetime | None = None,
 ) -> MatchResult:
     """Match a chain's alias of a product, and save the alias, with the input's barcode when it
     is valid (and with none otherwise):
@@ -582,7 +604,11 @@ def match_file_items(
     product by, the chain's memory (Story 4.4), as alias_products_by_norm finds it, unless
     the chain's alias with no barcode has votes: then its own product. So does a text seen before
     in this call. Every other item goes through match() with no barcode and the item
-    in the context. A text that clean_alias_text rejects gets None. Does not commit."""
+    in the context. A text that clean_alias_text rejects gets None.
+    Occurrences (Story 4.5): every alias this call used or wrote goes up by 1, once per call: an
+    item reused by its text counts on the chain's no-barcode alias of it, when there is one (a
+    text found only by the chain's memory of aliases with a barcode counts on none). Does not
+    commit."""
     norms = [catalog_service.alias_norm(item.alias_text) for item in items]
     known: dict[str, uuid.UUID] = catalog_service.alias_products_by_norm(
         session, chain_id, (n for n in norms if n is not None)
@@ -598,6 +624,9 @@ def match_file_items(
             known[key] = product_id
     counts: Counter[str] = Counter()
     result: list[uuid.UUID | None] = []
+    # Aliases matched or reused here: each counted once, at the end.
+    matched_aliases: set[uuid.UUID] = set()
+    reused_aliases: set[uuid.UUID] = set()
     for item, norm in zip(items, norms, strict=True):
         counts["items"] += 1
         if norm is None:
@@ -607,6 +636,9 @@ def match_file_items(
         if norm in known:
             counts["reused"] += 1
             result.append(known[norm])
+            alias = own.get(norm)
+            if alias is not None:
+                reused_aliases.add(alias.id)
             continue
         context = MatchContext(
             source="official_file",
@@ -615,7 +647,11 @@ def match_file_items(
             pack_size=item.pack_size,
             pack_unit=item.pack_unit,
         )
-        outcome = match(session, item.alias_text, chain_id, None, context, now)
+        # Not counted here: every alias is counted once, at the end, in one sorted update (one
+        # row-lock order for concurrent runs).
+        outcome = match(session, item.alias_text, chain_id, None, context, now, count=False)
+        if outcome.alias_id is not None:
+            matched_aliases.add(outcome.alias_id)
         if outcome.state == "new_product_proposal":
             counts["proposed"] += 1
         elif outcome.state != "unmatched":
@@ -626,6 +662,7 @@ def match_file_items(
             counts["matched"] += 1
             known[norm] = outcome.product_id
         result.append(outcome.product_id)
+    catalog_service.bump_alias_occurrences(session, reused_aliases | matched_aliases)
     # Counts only: no alias text.
     logger.info("matching_file_items", extra={name: counts[name] for name in _FILE_ITEM_COUNTS})
     return result
@@ -779,25 +816,34 @@ def record_vote(
 def _tally(
     session: Session, alias_id: uuid.UUID, current: uuid.UUID | None, trust: TrustGate
 ) -> Counter[uuid.UUID]:
-    # Votes of users (not operators) that count and are not deleted: confirm for the current
-    # product, other for its own, unknown for none. A product that is gone or was merged into
-    # another gets none.
-    votes = repository.user_votes(session, alias_id)
-    voters = identity_service.active_user_ids(session, {user for user, _, _ in votes})
+    return _tallies(session, {alias_id: current}, trust)[alias_id]
+
+
+def _tallies(
+    session: Session, currents: Mapping[uuid.UUID, uuid.UUID | None], trust: TrustGate
+) -> dict[uuid.UUID, Counter[uuid.UUID]]:
+    # For each alias (-> its current product): votes of users (not operators) that count and are
+    # not deleted: confirm for the current product, other for its own, unknown for none. A
+    # product that is gone or was merged into another gets none. A fixed number of queries,
+    # however many aliases.
+    votes = repository.user_votes_for_aliases(session, list(currents))
+    voters = identity_service.active_user_ids(session, {user for _, user, _, _ in votes})
     if voters:
         voters &= trust.counting(session, voters)
-    tally: Counter[uuid.UUID] = Counter()
-    for user_id, vote, product_id in votes:
+    tallies: dict[uuid.UUID, Counter[uuid.UUID]] = {alias: Counter() for alias in currents}
+    for alias_id, user_id, vote, product_id in votes:
         if user_id not in voters:
             continue
+        current = currents[alias_id]
         voted_for = current if vote == "confirm" else product_id if vote == "other" else None
         if voted_for is not None:
-            tally[voted_for] += 1
-    statuses = catalog_service.product_statuses(session, list(tally))
-    for product in list(tally):
-        if statuses.get(product) in (None, "merged_into"):
-            del tally[product]
-    return tally
+            tallies[alias_id][voted_for] += 1
+    statuses = catalog_service.product_statuses(session, {p for t in tallies.values() for p in t})
+    for tally in tallies.values():
+        for product in list(tally):
+            if statuses.get(product) in (None, "merged_into"):
+                del tally[product]
+    return tallies
 
 
 def evaluate_alias(
@@ -876,7 +922,12 @@ def approve_match(
     alias = catalog_service.lock_alias(session, alias_id)
     if alias is None:
         raise _alias_not_found()
-    target = _check_product(session, product_id if product_id is not None else alias.product_id)
+    target = product_id if product_id is not None else alias.product_id
+    if target is None:
+        raise _invalid_vote()
+    # Locked, so that a merge cannot make it merged_into after it was checked.
+    if catalog_service.lock_product_status(session, target) in (None, "merged_into"):
+        raise _invalid_vote()
     moved = target != alias.product_id
     if moved:
         # The confirm votes stay with the product they confirmed.
@@ -920,3 +971,217 @@ def alias_state_for_product(
 def _delete_votes(session: Session, user_id: uuid.UUID) -> None:
     """A deleted user's votes go. Aliases are not evaluated again: a final one stays final."""
     repository.delete_user_votes(session, user_id)
+
+
+# --- the match admin tool (Story 4.5) ---
+# The caller checks that the user is an operator (core.auth.require_operator, or the CLI).
+
+
+def _admin_log(action: str, operator_user_id: uuid.UUID, **fields: object) -> None:
+    admin_logger.info(
+        "admin_action",
+        extra={
+            "action": action,
+            "operator_user_id": str(operator_user_id),
+            **{k: str(v) if isinstance(v, uuid.UUID) else v for k, v in fields.items()},
+        },
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ProductVotes:
+    product_id: uuid.UUID
+    product_name: str | None
+    votes: int
+
+
+@dataclass(frozen=True, slots=True)
+class DisputedMatch:
+    alias: AdminAlias
+    # The counted votes of users for each product, the most first (as evaluate_alias counts).
+    votes: tuple[ProductVotes, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ScoredProduct:
+    product_id: uuid.UUID
+    product_name: str | None
+    score: float
+
+
+@dataclass(frozen=True, slots=True)
+class UncertainMatch:
+    alias: AdminAlias
+    # Up to 3, the best first.
+    candidates: tuple[ScoredProduct, ...]
+
+
+def disputed_matches(
+    session: Session, limit: int, offset: int, trust: TrustGate | None = None
+) -> tuple[int, list[DisputedMatch]]:
+    """(total, a page) of the disputed aliases, the oldest update first, each with the counted
+    votes for each product. Reads only."""
+    total, aliases = catalog_service.aliases_in_state(session, "disputed", limit, offset)
+    gate = trust or default_trust_gate()
+    by_alias = _tallies(session, {a.id: a.product_id for a in aliases}, gate)
+    tallies = [by_alias[a.id] for a in aliases]
+    names = catalog_service.product_names(session, {p for t in tallies for p in t})
+    return total, [
+        DisputedMatch(
+            alias,
+            tuple(
+                ProductVotes(product, names.get(product), count)
+                for product, count in sorted(tally.items(), key=lambda kv: (-kv[1], kv[0]))
+            ),
+        )
+        for alias, tally in zip(aliases, tallies, strict=True)
+    ]
+
+
+def uncertain_matches(
+    session: Session, limit: int, offset: int
+) -> tuple[int, list[UncertainMatch]]:
+    """(total, a page) of the uncertain aliases, the most seen first (occurrences) and then the
+    oldest update, each with up to 3 kept candidates. Reads only."""
+    total, aliases = catalog_service.aliases_in_state(
+        session, "uncertain", limit, offset, by_occurrences=True
+    )
+    kept = repository.candidates_for_aliases(session, [a.id for a in aliases])
+    names = catalog_service.product_names(session, {p for c in kept.values() for p, _ in c})
+    return total, [
+        UncertainMatch(
+            alias,
+            tuple(
+                ScoredProduct(product, names.get(product), float(score))
+                for product, score in kept.get(alias.id, [])[:MAX_KEPT_CANDIDATES]
+            ),
+        )
+        for alias in aliases
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class Approval:
+    """An operator's approval of a match, and the chain's other final aliases of the same text
+    that moved with it."""
+
+    outcome: VoteOutcome
+    realigned_alias_ids: tuple[uuid.UUID, ...]
+
+
+def operator_approve_match(
+    session: Session,
+    alias_id: uuid.UUID,
+    operator_user_id: uuid.UUID,
+    product_id: uuid.UUID | None = None,
+    now: datetime | None = None,
+) -> Approval:
+    """approve_match, and then the chain's other final aliases of the same alias_norm (copies the
+    chain's memory made, Story 4.4) move to the same product, confidence 1: memory never keeps
+    a product the operator replaced. Errors as approve_match. Does not commit."""
+    when = now or datetime.now(UTC)
+    outcome = approve_match(session, alias_id, operator_user_id, product_id, when)
+    assert outcome.product_id is not None  # noqa: S101 - approve_match always settles a product
+    realigned = catalog_service.realign_final_aliases(session, alias_id, outcome.product_id, when)
+    _admin_log(
+        "approve_match",
+        operator_user_id,
+        alias_id=alias_id,
+        product_id=outcome.product_id,
+        changed=outcome.changed,
+        realigned=len(realigned),
+    )
+    return Approval(outcome, tuple(realigned))
+
+
+def operator_approve_product(
+    session: Session, product_id: uuid.UUID, operator_user_id: uuid.UUID
+) -> tuple[str, bool]:
+    """A proposed product is active: (status, changed). Errors as catalog's approve_product.
+    Does not commit."""
+    status, changed = catalog_service.approve_product(session, product_id)
+    _admin_log("approve_product", operator_user_id, product_id=product_id, changed=changed)
+    return status, changed
+
+
+def _merge_candidates(session: Session, remove: uuid.UUID, keep: uuid.UUID, now: datetime) -> int:
+    """In each alias's kept candidates, remove becomes keep at its rank, or goes when keep is
+    already one; the ranks stay 1, 2, 3 with no gap. Returns how many entries changed."""
+    aliases = repository.aliases_with_candidate(session, remove)
+    kept = repository.candidates_for_aliases(session, aliases)
+    for alias_id in aliases:
+        current = kept.get(alias_id, [])
+        has_keep = any(product == keep for product, _ in current)
+        new = [
+            (keep if product == remove else product, score)
+            for product, score in current
+            if not (product == remove and has_keep)
+        ]
+        repository.replace_candidates(session, alias_id, new, now)
+    return len(aliases)
+
+
+def _reevaluate(session: Session, alias_ids: Collection[uuid.UUID], now: datetime) -> None:
+    """After a merge: an alias's other votes for its own product are confirm votes now, and each
+    alias with votes is evaluated again (a disputed one may now have all its votes, and be
+    final)."""
+    voted = repository.aliases_with_votes(session, sorted(alias_ids))
+    products = catalog_service.alias_products(session, voted)
+    gate = default_trust_gate()
+    for alias_id in sorted(voted):
+        product_id = products.get(alias_id)
+        if product_id is not None:
+            repository.others_to_confirm(session, alias_id, product_id, now)
+        evaluate_alias(session, alias_id, gate, now)
+
+
+@dataclass(frozen=True, slots=True)
+class MergeOutcome:
+    keep_id: uuid.UUID
+    remove_id: uuid.UUID
+    aliases_moved: int
+    barcode_moved: bool
+    observations_moved: int
+    promotion_products_moved: int
+    votes_moved: int
+    candidates_removed: int
+
+
+def merge_products(
+    session: Session,
+    keep: uuid.UUID,
+    remove: uuid.UUID,
+    operator_user_id: uuid.UUID,
+    now: datetime | None = None,
+) -> MergeOutcome:
+    """Merge the duplicate remove into keep, in the caller's transaction, each module through its
+    own service: catalog (aliases, barcode, remove merged_into keep), pricing (observations and
+    promotions, prices unchanged), matching (remove's candidates go, votes for it are for keep),
+    and then current_prices is refreshed. Errors as catalog's merge_products, before anything
+    is written. Does not commit."""
+    when = now or datetime.now(UTC)
+    moved = catalog_service.merge_products(session, keep, remove, when)
+    pricing = pricing_service.reassign_product(session, remove, keep)
+    candidates = _merge_candidates(session, remove, keep, when)
+    voted = repository.reassign_votes(session, remove, keep)
+    _reevaluate(session, set(voted) | set(moved.moved_alias_ids), when)
+    pricing_service.refresh_current_prices(session)
+    outcome = MergeOutcome(
+        keep_id=keep,
+        remove_id=remove,
+        aliases_moved=moved.aliases_moved,
+        barcode_moved=moved.barcode_moved,
+        observations_moved=pricing.observations,
+        promotion_products_moved=pricing.promotion_products,
+        votes_moved=len(voted),
+        candidates_removed=candidates,
+    )
+    _admin_log(
+        "merge_products",
+        operator_user_id,
+        keep_id=keep,
+        remove_id=remove,
+        aliases_moved=outcome.aliases_moved,
+        observations_moved=outcome.observations_moved,
+    )
+    return outcome

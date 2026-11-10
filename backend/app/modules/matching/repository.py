@@ -104,16 +104,6 @@ def aliases_with_votes(session: Session, alias_ids: Sequence[uuid.UUID]) -> set[
     return found
 
 
-def user_votes(
-    session: Session, alias_id: uuid.UUID
-) -> Sequence[tuple[uuid.UUID, str, uuid.UUID | None]]:
-    """(user_id, vote, product_id) of each vote on the alias with role user."""
-    stmt = select(MatchVote.user_id, MatchVote.vote, MatchVote.product_id).where(
-        MatchVote.alias_id == alias_id, MatchVote.role == "user"
-    )
-    return [(r[0], r[1], r[2]) for r in session.execute(stmt).all()]
-
-
 def confirms_to_other(
     session: Session, alias_id: uuid.UUID, product_id: uuid.UUID | None, now: datetime
 ) -> None:
@@ -133,3 +123,71 @@ def confirms_to_other(
 
 def delete_user_votes(session: Session, user_id: uuid.UUID) -> None:
     session.execute(delete(MatchVote).where(MatchVote.user_id == user_id))
+
+
+def candidates_for_aliases(
+    session: Session, alias_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, list[tuple[uuid.UUID, Decimal]]]:
+    """alias_id -> its kept candidates (product_id, score), by rank."""
+    found: dict[uuid.UUID, list[tuple[uuid.UUID, Decimal]]] = {}
+    for start in range(0, len(alias_ids), 1000):
+        batch = alias_ids[start : start + 1000]
+        stmt = (
+            select(MatchCandidate.alias_id, MatchCandidate.product_id, MatchCandidate.score)
+            .where(MatchCandidate.alias_id.in_(batch))
+            .order_by(MatchCandidate.alias_id, MatchCandidate.rank)
+        )
+        for alias_id, product_id, score in session.execute(stmt).all():
+            found.setdefault(alias_id, []).append((product_id, score))
+    return found
+
+
+def aliases_with_candidate(session: Session, product_id: uuid.UUID) -> list[uuid.UUID]:
+    """The aliases that have this product among their kept candidates, sorted."""
+    stmt = select(MatchCandidate.alias_id).distinct().where(MatchCandidate.product_id == product_id)
+    return sorted(session.execute(stmt).scalars().all())
+
+
+def reassign_votes(
+    session: Session, from_product: uuid.UUID, to_product: uuid.UUID
+) -> list[uuid.UUID]:
+    """Votes for from_product are for to_product. A vote is keyed by (alias_id, user_id), not by
+    its product, so none collide. Returns the aliases of the votes moved, sorted (with repeats
+    removed)."""
+    stmt = (
+        update(MatchVote)
+        .where(MatchVote.product_id == from_product)
+        .values(product_id=to_product)
+        .returning(MatchVote.alias_id)
+    )
+    return sorted(set(session.execute(stmt).scalars().all()))
+
+
+def others_to_confirm(
+    session: Session, alias_id: uuid.UUID, product_id: uuid.UUID, now: datetime
+) -> int:
+    """The alias's other votes for product_id (its own product) become confirm. Returns how
+    many."""
+    result = session.execute(
+        update(MatchVote)
+        .where(
+            MatchVote.alias_id == alias_id,
+            MatchVote.vote == "other",
+            MatchVote.product_id == product_id,
+        )
+        .values(vote="confirm", product_id=None, updated_at=now)
+    )
+    return int(result.rowcount)  # type: ignore[attr-defined]
+
+
+def user_votes_for_aliases(
+    session: Session, alias_ids: Sequence[uuid.UUID]
+) -> list[tuple[uuid.UUID, uuid.UUID, str, uuid.UUID | None]]:
+    """(alias_id, user_id, vote, product_id) of each vote with role user on these aliases, in one
+    query."""
+    if not alias_ids:
+        return []
+    stmt = select(
+        MatchVote.alias_id, MatchVote.user_id, MatchVote.vote, MatchVote.product_id
+    ).where(MatchVote.alias_id.in_(list(alias_ids)), MatchVote.role == "user")
+    return [(r[0], r[1], r[2], r[3]) for r in session.execute(stmt).all()]

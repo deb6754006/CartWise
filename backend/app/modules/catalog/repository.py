@@ -324,7 +324,10 @@ def product_ids_by_barcode(session: Session, barcodes: Sequence[str]) -> dict[st
     found: dict[str, uuid.UUID] = {}
     for start in range(0, len(barcodes), PRODUCT_BATCH):
         batch = barcodes[start : start + PRODUCT_BATCH]
-        stmt = select(Product.barcode, Product.id).where(Product.barcode.in_(batch))
+        # A product merged into another (Story 4.5) that kept its barcode stands for the product
+        # it was merged into: what is seen with the barcode goes there.
+        target = func.coalesce(Product.merged_into_id, Product.id)
+        stmt = select(Product.barcode, target).where(Product.barcode.in_(batch))
         for barcode, product_id in session.execute(stmt).all():
             if barcode is not None:
                 found[barcode] = product_id
@@ -614,7 +617,9 @@ def insert_product(session: Session, row: Mapping[str, Any]) -> uuid.UUID:
     ).scalar_one_or_none()
     if inserted is not None:
         return inserted
-    return session.execute(select(Product.id).where(Product.barcode == row["barcode"])).scalar_one()
+    # A product merged into another (Story 4.5) stands for the one it was merged into.
+    target = func.coalesce(Product.merged_into_id, Product.id)
+    return session.execute(select(target).where(Product.barcode == row["barcode"])).scalar_one()
 
 
 def product_statuses(session: Session, ids: Collection[uuid.UUID]) -> dict[uuid.UUID, str]:
@@ -669,3 +674,166 @@ def sample_certain_barcode_aliases(
         .limit(limit)
     )
     return [(r[0], r[1], r[2], r[3]) for r in session.execute(stmt).all()]
+
+
+# --- the match admin tool (Story 4.5) ---
+
+
+def bump_alias_occurrences(session: Session, alias_ids: Sequence[uuid.UUID]) -> None:
+    """Each of these aliases' occurrences goes up by 1. alias_ids are unique and sorted, so two
+    transactions take the row locks in one order."""
+    for start in range(0, len(alias_ids), ALIAS_BATCH):
+        batch = alias_ids[start : start + ALIAS_BATCH]
+        session.execute(
+            update(ProductAlias)
+            .where(ProductAlias.id.in_(batch))
+            .values(occurrences=ProductAlias.occurrences + 1)
+        )
+
+
+def aliases_in_state(
+    session: Session, state: str, limit: int, offset: int, by_occurrences: bool
+) -> tuple[int, list[Any]]:
+    """(total, rows) of the aliases in this state, a page of them. Each row: id, chain_id,
+    chain_name, alias_text, barcode, product_id, product_name, confidence, occurrences,
+    updated_at. by_occurrences: the most seen first, then the oldest update; otherwise the
+    oldest update first."""
+    total = session.execute(
+        select(func.count()).select_from(ProductAlias).where(ProductAlias.state == state)
+    ).scalar_one()
+    order: list[Any] = (
+        [ProductAlias.occurrences.desc(), ProductAlias.updated_at, ProductAlias.id]
+        if by_occurrences
+        else [ProductAlias.updated_at, ProductAlias.id]
+    )
+    stmt = (
+        select(
+            ProductAlias.id,
+            ProductAlias.chain_id,
+            Chain.name,
+            ProductAlias.alias_text,
+            ProductAlias.barcode,
+            ProductAlias.product_id,
+            Product.name,
+            ProductAlias.confidence,
+            ProductAlias.occurrences,
+            ProductAlias.updated_at,
+        )
+        .join(Chain, Chain.id == ProductAlias.chain_id)
+        .outerjoin(Product, Product.id == ProductAlias.product_id)
+        .where(ProductAlias.state == state)
+        .order_by(*order)
+        .limit(limit)
+        .offset(offset)
+    )
+    return int(total), list(session.execute(stmt).all())
+
+
+def product_names(session: Session, ids: Collection[uuid.UUID]) -> dict[uuid.UUID, str]:
+    if not ids:
+        return {}
+    stmt = select(Product.id, Product.name).where(Product.id.in_(list(ids)))
+    return {row[0]: row[1] for row in session.execute(stmt).all()}
+
+
+def proposed_products(session: Session, limit: int, offset: int) -> tuple[int, list[Any]]:
+    """(total, rows) of the proposed products, the oldest first, a page of them. Each row: id,
+    name, barcode, created_at, alias_count (the aliases that point to it)."""
+    total = session.execute(
+        select(func.count()).select_from(Product).where(Product.status == "proposed")
+    ).scalar_one()
+    alias_count = (
+        select(func.count())
+        .select_from(ProductAlias)
+        .where(ProductAlias.product_id == Product.id)
+        .scalar_subquery()
+    )
+    stmt = (
+        select(Product.id, Product.name, Product.barcode, Product.created_at, alias_count)
+        .where(Product.status == "proposed")
+        .order_by(Product.created_at, Product.id)
+        .limit(limit)
+        .offset(offset)
+    )
+    return int(total), list(session.execute(stmt).all())
+
+
+def lock_products(session: Session, ids: Collection[uuid.UUID]) -> dict[uuid.UUID, Any]:
+    """id -> (id, status, barcode, merged_into_id) of these products, locked FOR UPDATE until the
+    transaction ends, in id order. A missing one is left out."""
+    stmt = (
+        select(Product.id, Product.status, Product.barcode, Product.merged_into_id)
+        .where(Product.id.in_(sorted(ids)))
+        .order_by(Product.id)
+        .with_for_update()
+    )
+    return {row[0]: row for row in session.execute(stmt).all()}
+
+
+def set_product_status(session: Session, product_id: uuid.UUID, status: str) -> None:
+    session.execute(update(Product).where(Product.id == product_id).values(status=status))
+
+
+def move_aliases(
+    session: Session, from_product: uuid.UUID, to_product: uuid.UUID, now: datetime
+) -> list[uuid.UUID]:
+    """The aliases of from_product point to to_product. Their key (chain_id, alias_norm,
+    barcode) does not change, so two aliases never collide. Returns the ids of those moved."""
+    stmt = (
+        update(ProductAlias)
+        .where(ProductAlias.product_id == from_product)
+        .values(product_id=to_product, updated_at=now)
+        .returning(ProductAlias.id)
+    )
+    return sorted(session.execute(stmt).scalars().all())
+
+
+def mark_merged(session: Session, remove: uuid.UUID, keep: uuid.UUID) -> None:
+    """remove is merged into keep; so are the products merged into remove before (one hop)."""
+    session.execute(
+        update(Product)
+        .where(Product.id == remove)
+        .values(status="merged_into", merged_into_id=keep)
+    )
+    session.execute(
+        update(Product).where(Product.merged_into_id == remove).values(merged_into_id=keep)
+    )
+
+
+def set_product_barcode(session: Session, product_id: uuid.UUID, barcode: str | None) -> None:
+    session.execute(update(Product).where(Product.id == product_id).values(barcode=barcode))
+
+
+def realign_final_aliases(
+    session: Session, alias_id: uuid.UUID, product_id: uuid.UUID, now: datetime
+) -> list[uuid.UUID]:
+    """The chain's other final aliases of the same alias_norm as alias_id (with any barcode, or
+    none) that point elsewhere move to product_id, confidence 1. Returns their ids."""
+    ref = session.execute(
+        select(ProductAlias.chain_id, ProductAlias.alias_norm).where(ProductAlias.id == alias_id)
+    ).one_or_none()
+    if ref is None:
+        return []
+    stmt = (
+        update(ProductAlias)
+        .where(
+            ProductAlias.chain_id == ref[0],
+            ProductAlias.alias_norm == ref[1],
+            ProductAlias.state == "final",
+            ProductAlias.id != alias_id,
+            ProductAlias.product_id.is_distinct_from(product_id),
+        )
+        .values(product_id=product_id, confidence=Decimal(1), updated_at=now)
+        .returning(ProductAlias.id)
+    )
+    return sorted(session.execute(stmt).scalars().all())
+
+
+def alias_products(session: Session, alias_ids: Sequence[uuid.UUID]) -> dict[uuid.UUID, Any]:
+    """alias_id -> its product_id (None: none), for those of these aliases that exist."""
+    found: dict[uuid.UUID, Any] = {}
+    for start in range(0, len(alias_ids), ALIAS_BATCH):
+        batch = alias_ids[start : start + ALIAS_BATCH]
+        stmt = select(ProductAlias.id, ProductAlias.product_id).where(ProductAlias.id.in_(batch))
+        found.update({row[0]: row[1] for row in session.execute(stmt).all()})
+    return found

@@ -149,9 +149,11 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, MatchContext | None]
         barcode: str | None = None,
         context: MatchContext | None = None,
         now: datetime | None = None,
+        *,
+        count: bool = True,
     ) -> MatchResult:
         calls.append((alias_text, context))
-        return real(session, alias_text, chain_id, barcode, context, now)
+        return real(session, alias_text, chain_id, barcode, context, now, count=count)
 
     monkeypatch.setattr(matching_service, "match", recording)
     return calls

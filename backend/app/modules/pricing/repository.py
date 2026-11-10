@@ -183,3 +183,38 @@ def median_prices(
         for product_id, median in session.execute(stmt, params).all():
             found[product_id] = float(median)
     return found
+
+
+def reassign_observations(session: Session, from_product: uuid.UUID, to_product: uuid.UUID) -> int:
+    """The observations of from_product belong to to_product: product_id only, never the price,
+    time or source (AD-3). Returns how many."""
+    result = session.execute(
+        update(PriceObservation)
+        .where(PriceObservation.product_id == from_product)
+        .values(product_id=to_product)
+    )
+    return int(result.rowcount)  # type: ignore[attr-defined]
+
+
+def reassign_promotion_products(
+    session: Session, from_product: uuid.UUID, to_product: uuid.UUID
+) -> int:
+    """from_product's promotions apply to to_product. One that already applies to to_product is
+    not duplicated: from_product's row goes. Returns how many rows moved."""
+    has_target = (
+        select(PromotionProduct.promotion_id)
+        .where(PromotionProduct.product_id == to_product)
+        .scalar_subquery()
+    )
+    session.execute(
+        delete(PromotionProduct).where(
+            PromotionProduct.product_id == from_product,
+            PromotionProduct.promotion_id.in_(has_target),
+        )
+    )
+    result = session.execute(
+        update(PromotionProduct)
+        .where(PromotionProduct.product_id == from_product)
+        .values(product_id=to_product)
+    )
+    return int(result.rowcount)  # type: ignore[attr-defined]

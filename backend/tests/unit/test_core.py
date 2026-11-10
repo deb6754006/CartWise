@@ -172,11 +172,18 @@ def test_modules_layout() -> None:
             "quota",
             "spending",
             "geo",
+            "admin",
         ]
     )
+    # admin (Story 4.5) owns no tables: routes and schemas only, over the other modules' services.
+    full = ("models.py", "schemas.py", "repository.py", "service.py", "routes.py")
+    thin = {"admin": ("schemas.py", "routes.py")}
     for name in modules:
-        for f in ("models.py", "schemas.py", "repository.py", "service.py", "routes.py"):
+        files = thin.get(name, full)
+        for f in files:
             assert (modules_dir / name / f).is_file(), f"{name}/{f}"
+    for f in ("models.py", "repository.py", "service.py"):
+        assert not (modules_dir / "admin" / f).exists(), f"admin/{f}"
 
 
 # --- review follow-ups -------------------------------------------------------
@@ -268,7 +275,7 @@ def test_explicit_http_exception_422() -> None:
 def test_all_module_routers_mounted_under_v1() -> None:
     from app.modules.registry import ROUTERS
 
-    assert len(ROUTERS) == 11
+    assert len(ROUTERS) == 12
     saved = [list(r.routes) for r in ROUTERS]
     try:
         for r in ROUTERS:

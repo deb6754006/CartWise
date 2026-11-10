@@ -15,6 +15,7 @@ from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
+from app.core.errors import AppError
 from app.core.ids import new_id
 from app.modules.catalog import repository
 from app.modules.catalog.models import (
@@ -690,3 +691,167 @@ def sample_certain_barcode_aliases(session: Session, limit: int, seed: str) -> l
     return [
         AliasSample(*row) for row in repository.sample_certain_barcode_aliases(session, limit, seed)
     ]
+
+
+# --- the match admin tool (Story 4.5) ---
+
+PRODUCT_NOT_FOUND_HE = "המוצר לא נמצא"
+PRODUCT_MERGED_HE = "המוצר כבר מוזג למוצר אחר"
+INVALID_MERGE_HE = "אי אפשר למזג מוצר לתוך עצמו"
+
+
+def product_not_found() -> AppError:
+    return AppError("product_not_found", PRODUCT_NOT_FOUND_HE, status=404)
+
+
+def product_merged() -> AppError:
+    return AppError("product_merged", PRODUCT_MERGED_HE, status=409)
+
+
+def bump_alias_occurrences(session: Session, alias_ids: Iterable[uuid.UUID]) -> None:
+    """Each of these aliases (once, however many times it is given) was seen once more: its
+    occurrences go up by 1. For matching only. Does not commit."""
+    wanted: Sequence[uuid.UUID] = sorted(set(alias_ids))
+    if wanted:
+        repository.bump_alias_occurrences(session, wanted)
+
+
+@dataclass(frozen=True, slots=True)
+class AdminAlias:
+    """An alias as the operator sees it."""
+
+    id: uuid.UUID
+    chain_id: uuid.UUID
+    chain_name: str
+    alias_text: str
+    barcode: str | None
+    product_id: uuid.UUID | None
+    product_name: str | None
+    confidence: Decimal | None
+    occurrences: int
+    updated_at: datetime
+
+
+def aliases_in_state(
+    session: Session, state: AliasState, limit: int, offset: int, by_occurrences: bool = False
+) -> tuple[int, list[AdminAlias]]:
+    """(total, a page) of the aliases in this state: by_occurrences, the most seen first and then
+    the oldest update; otherwise the oldest update first. Reads only."""
+    total, rows = repository.aliases_in_state(session, state, limit, offset, by_occurrences)
+    return total, [AdminAlias(*row) for row in rows]
+
+
+def product_names(session: Session, ids: Collection[uuid.UUID]) -> dict[uuid.UUID, str]:
+    """The name of each of these products that exists."""
+    return repository.product_names(session, ids)
+
+
+@dataclass(frozen=True, slots=True)
+class ProposedProduct:
+    id: uuid.UUID
+    name: str
+    barcode: str | None
+    created_at: datetime
+    alias_count: int
+
+
+def proposed_products(
+    session: Session, limit: int, offset: int
+) -> tuple[int, list[ProposedProduct]]:
+    """(total, a page) of the proposed products waiting for an operator, the oldest first, each
+    with how many aliases point to it. Reads only."""
+    total, rows = repository.proposed_products(session, limit, offset)
+    return total, [ProposedProduct(*row) for row in rows]
+
+
+def approve_product(session: Session, product_id: uuid.UUID) -> tuple[ProductStatus, bool]:
+    """An operator approves a proposed product: it is active. (status, changed): an active one is
+    left as it is. A missing product is 404 product_not_found; one merged into another is 409
+    product_merged. Does not commit."""
+    row = repository.lock_products(session, [product_id]).get(product_id)
+    if row is None:
+        raise product_not_found()
+    if row.status == "merged_into":
+        raise product_merged()
+    if row.status == "active":
+        return "active", False
+    repository.set_product_status(session, product_id, "active")
+    return "active", True
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogMerge:
+    """What catalog moved in a merge."""
+
+    aliases_moved: int
+    barcode_moved: bool
+    # The ids of the aliases that moved, sorted.
+    moved_alias_ids: tuple[uuid.UUID, ...] = ()
+    keep_approved: bool = False
+
+
+def merge_products(
+    session: Session, keep: uuid.UUID, remove: uuid.UUID, now: datetime | None = None
+) -> CatalogMerge:
+    """Catalog's part of merging remove into keep (Story 4.5), with both products locked:
+    1. remove's aliases point to keep. An alias's key (chain, alias_norm, barcode) does not
+       include its product, so no two aliases collide and none is deleted.
+    2. remove's barcode moves to keep when keep has none; otherwise it stays on remove, and
+       product_ids_by_barcode (so ensure_products_by_barcode) gives keep for it.
+    3. remove is merged_into keep, and so is any product merged into remove before.
+    4. An active remove merged into a proposed keep makes keep active: a product that was
+       already approved is not proposed again.
+    keep equal to remove is 422 invalid_merge; a missing product is 404 product_not_found; one
+    merged already is 409 product_merged. Does not commit: the other modules' parts go in the
+    same transaction."""
+    if keep == remove:
+        raise AppError("invalid_merge", INVALID_MERGE_HE, status=422)
+    when = now if now is not None else datetime.now(UTC)
+    rows = repository.lock_products(session, [keep, remove])
+    if keep not in rows or remove not in rows:
+        raise product_not_found()
+    if rows[keep].status == "merged_into" or rows[remove].status == "merged_into":
+        raise product_merged()
+    moved = repository.move_aliases(session, remove, keep, when)
+    keep_approved = rows[remove].status == "active" and rows[keep].status == "proposed"
+    if keep_approved:
+        repository.set_product_status(session, keep, "active")
+    barcode = rows[remove].barcode
+    barcode_moved = barcode is not None and rows[keep].barcode is None
+    if barcode_moved:
+        # Cleared first: a barcode is unique.
+        repository.set_product_barcode(session, remove, None)
+        repository.set_product_barcode(session, keep, barcode)
+    repository.mark_merged(session, remove, keep)
+    return CatalogMerge(
+        aliases_moved=len(moved),
+        barcode_moved=barcode_moved,
+        moved_alias_ids=tuple(moved),
+        keep_approved=keep_approved,
+    )
+
+
+def realign_final_aliases(
+    session: Session, alias_id: uuid.UUID, product_id: uuid.UUID, now: datetime | None = None
+) -> list[uuid.UUID]:
+    """After an operator settled alias_id on product_id: the chain's other final aliases of the
+    same text (with any barcode, or none), copies the chain's memory made (Story 4.4), move to
+    product_id too, with confidence 1. Returns their ids. For matching only. Does not commit."""
+    return repository.realign_final_aliases(
+        session, alias_id, product_id, now if now is not None else datetime.now(UTC)
+    )
+
+
+def lock_product_status(session: Session, product_id: uuid.UUID) -> ProductStatus | None:
+    """The product's status, with the product locked (FOR UPDATE) until the transaction ends, so
+    that a merge cannot change it meanwhile; None when there is no such product."""
+    row = repository.lock_products(session, [product_id]).get(product_id)
+    return row.status if row is not None else None
+
+
+def alias_products(
+    session: Session, alias_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, uuid.UUID | None]:
+    """alias_id -> its product (None: none), for those of these aliases that exist. Reads only."""
+    wanted: Sequence[uuid.UUID] = sorted(set(alias_ids))
+    return repository.alias_products(session, wanted) if wanted else {}

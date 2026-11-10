@@ -73,6 +73,16 @@ class Settings(BaseSettings):
     MATCH_NEW_PRODUCT_BELOW: float = Field(default=0.30, ge=0, le=1)
     # Votes of distinct users for an alias's product that make the match final (Story 4.3).
     MATCH_FINAL_VOTES: int = Field(default=3, ge=1, le=20)
+    # Operators of the match admin tool (Story 4.5): the Firebase UIDs of registered users,
+    # separated by commas. Empty: no one is an operator. Set only in the server's .env, never
+    # in the repo (see deploy/README.md).
+    OPERATOR_FIREBASE_UIDS: str = ""
+
+    @property
+    def operator_firebase_uids(self) -> frozenset[str]:
+        """OPERATOR_FIREBASE_UIDS as a set, with whitespace trimmed and empty entries dropped."""
+        uids = (uid.strip() for uid in self.OPERATOR_FIREBASE_UIDS.split(","))
+        return frozenset(uid for uid in uids if uid)
 
     @model_validator(mode="after")
     def _new_product_below_certain(self) -> Self:

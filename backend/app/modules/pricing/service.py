@@ -214,3 +214,21 @@ def median_prices(session: Session, product_ids: Collection[uuid.UUID]) -> dict[
         return {}
     medians = repository.median_prices(session, sorted(set(product_ids)), "regular")
     return {product_id: round(median) for product_id, median in medians.items()}
+
+
+@dataclass(frozen=True, slots=True)
+class PricingReassign:
+    observations: int
+    promotion_products: int
+
+
+def reassign_product(session: Session, remove: uuid.UUID, keep: uuid.UUID) -> PricingReassign:
+    """Pricing's part of merging remove into keep (Story 4.5): remove's observations and
+    promotions belong to keep. Only which product an observation belongs to changes: its price,
+    time and source never do (AD-3), and none is deleted. A promotion of both keeps one row.
+    current_prices is not refreshed here: the caller refreshes it once the merge is done. Does
+    not commit."""
+    return PricingReassign(
+        observations=repository.reassign_observations(session, remove, keep),
+        promotion_products=repository.reassign_promotion_products(session, remove, keep),
+    )

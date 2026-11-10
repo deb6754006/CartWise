@@ -98,6 +98,11 @@ def _aliases(engine: Engine) -> list[dict[str, Any]]:
         return [dict(row._mapping) for row in rows]
 
 
+def _seen_once_more(rows: list[dict[str, Any]], alias_id: uuid.UUID | None) -> list[dict[str, Any]]:
+    """rows, with the occurrences of alias_id up by 1: what matching it again changes (4.5)."""
+    return [{**r, "occurrences": r["occurrences"] + (r["id"] == alias_id)} for r in rows]
+
+
 def _set_state(engine: Engine, alias_id: uuid.UUID, state: str) -> None:
     with engine.begin() as conn:
         conn.execute(
@@ -212,7 +217,7 @@ def test_a_settled_alias_is_not_changed(
 
     result = _match(factory, "חלב 3% 1ל", chain, MILK, NOW + timedelta(hours=1))
     assert (result.state, result.product_id, result.alias_id) == (state, a, first.alias_id)
-    assert _aliases(engine) == before
+    assert _aliases(engine) == _seen_once_more(before, first.alias_id)
 
 
 def test_a_certain_alias_follows_the_barcode(

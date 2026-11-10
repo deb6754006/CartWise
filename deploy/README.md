@@ -138,6 +138,35 @@ docker compose exec db psql -U cartwise -c "SELECT chain_id, kind, opened_at, la
 docker compose exec worker python -m app.worker.jobs.check_ingestion_health
 ```
 
+## כלי ניהול ההתאמות (Story 4.5)
+
+המפעיל רואה התאמות במחלוקת, תור של התאמות לא ודאיות (המופיעות הכי הרבה קודם), ומוצרים חדשים שממתינים לאישור. הוא יכול לאשר התאמה (היא הופכת לסופית), לאשר מוצר חדש, ולמזג שני מוצרים כפולים. במיזוג, הכינויים, התצפיות, המבצעים וההצבעות של המוצר המוסר עוברים למוצר שנשאר, והמוצר המוסר מסומן `merged_into`. המחירים עצמם לא משתנים.
+
+**מי מפעיל:** משתמש רשום (התחבר עם Google לפחות פעם אחת), שה-Firebase UID שלו מופיע במשתנה `OPERATOR_FIREBASE_UIDS`. כמה מפעילים מפרידים בפסיקים. ברירת המחדל ריקה: אין מפעילים. ה-UID מופיע ב-Firebase Console, תחת Authentication > Users.
+
+**איפה מגדירים:** בקובץ `deploy/.env` שבשרת, שלא נכנס ל-git, או ב-shell. ה-compose מעביר ל-api את `OPERATOR_FIREBASE_UIDS` ואת `FIREBASE_PROJECT_ID`. **לא מכניסים UID אמיתי לריפו.**
+
+```bash
+# deploy/.env
+FIREBASE_PROJECT_ID=<project id>
+OPERATOR_FIREBASE_UIDS=<uid1>,<uid2>
+```
+
+**API:** ‏`/v1/admin/matches/disputed`, ‏`/v1/admin/matches/uncertain`, ‏`/v1/admin/products/proposed` (עם `limit`, עד 200, ו-`offset`), ‏`POST /v1/admin/matches/{alias_id}/approve`, ‏`POST /v1/admin/products/{product_id}/approve` ו-`POST /v1/admin/products/merge`. כולם דורשים Firebase ID token של מפעיל. בלי token: ‏401. משתמש שאינו מפעיל, או token של אורח: ‏403. בלי `FIREBASE_PROJECT_ID`: ‏503.
+
+**CLI:** אותם שירותים, ישירות מול בסיס הנתונים. `--operator` הוא ה-Firebase UID של המפעיל, והוא חייב להופיע ב-`OPERATOR_FIREBASE_UIDS` שבסביבה של ה-container. הסקריפט מסרב לרוץ בלי בסיס נתונים.
+
+```bash
+docker compose exec api python -m scripts.matches disputed --operator <uid>         # כינוי, רשת, טקסט, מוצר, קולות לכל מוצר
+docker compose exec api python -m scripts.matches uncertain --operator <uid>        # כינוי, הופעות, רשת, טקסט, מוצר, ביטחון, מועמדים
+docker compose exec api python -m scripts.matches proposed --operator <uid>         # מוצר, מספר כינויים, ברקוד, שם
+docker compose exec api python -m scripts.matches approve <alias_id> [<product_id>] --operator <uid>
+docker compose exec api python -m scripts.matches approve-product <product_id> --operator <uid>
+docker compose exec api python -m scripts.matches merge <keep_id> <remove_id> --operator <uid>
+```
+
+לרשימות יש `--limit` (ברירת מחדל 50, עד 200) ו-`--offset`. כל פעולה נרשמת בלוג כשורת `admin_action`, עם הפעולה, המזהים וה-`user_id` הפנימי של המפעיל, בלי טקסט של כינוי.
+
 ## רשת עם סינון TLS (למשל NetFree)
 
 אם בניית ה-image נכשלת בשגיאת תעודה (certificate) בשלב `uv sync`, צריך להגדיר את משתנה הסביבה `CARTWISE_EXTRA_CA`, עם הנתיב לקובץ התעודות **המלא** של הרשת. התעודה משמשת רק בזמן הבנייה, ולא נכנסת ל-image.

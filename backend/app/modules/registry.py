@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+from app.modules.admin.routes import router as admin_router
 from app.modules.catalog.routes import router as catalog_router
 from app.modules.geo.routes import router as geo_router
 from app.modules.identity.routes import router as identity_router
@@ -26,4 +27,5 @@ ROUTERS: list[APIRouter] = [
     quota_router,
     spending_router,
     geo_router,
+    admin_router,
 ]

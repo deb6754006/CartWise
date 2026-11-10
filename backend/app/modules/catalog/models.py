@@ -11,12 +11,14 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     SmallInteger,
     String,
     Text,
     UniqueConstraint,
     Uuid,
+    text,
     true,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -148,6 +150,7 @@ class Product(Base):
         CheckConstraint(_in("pack_unit", PACK_UNITS), name="pack_unit"),
         CheckConstraint(_in("status", PRODUCT_STATUSES), name="status"),
         CheckConstraint("pack_size > 0", name="pack_size"),
+        Index("ix_products_merged_into_id", "merged_into_id"),
         # Trigram, because search matches a substring of name_norm.
         Index(
             "ix_products_name_norm",
@@ -170,6 +173,10 @@ class Product(Base):
     is_weighted: Mapped[bool] = mapped_column(Boolean)
     status: Mapped[ProductStatus] = mapped_column(String(16))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # The product this one was merged into (status merged_into), by an operator (Story 4.5).
+    merged_into_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("products.id"), nullable=True
+    )
 
 
 AliasState = Literal["certain", "uncertain", "final", "disputed"]
@@ -199,7 +206,15 @@ class ProductAlias(Base):
         ),
         CheckConstraint(_in("state", ALIAS_STATES), name="state"),
         CheckConstraint("confidence >= 0 AND confidence <= 1", name="confidence"),
+        CheckConstraint("occurrences >= 0", name="occurrences"),
         Index("ix_product_aliases_product_id", "product_id"),
+        # The operator's queue of uncertain aliases, the most seen first (Story 4.5).
+        Index(
+            "ix_product_aliases_state_occurrences",
+            "state",
+            text("occurrences DESC"),
+            "updated_at",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
@@ -212,5 +227,8 @@ class ProductAlias(Base):
     )
     state: Mapped[AliasState] = mapped_column(String(16))
     confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
+    # How many times matching returned or wrote this alias (Story 4.5): the operator's queue
+    # of uncertain aliases is ordered by it.
+    occurrences: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

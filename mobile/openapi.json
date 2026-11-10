@@ -501,10 +501,562 @@
           }
         }
       }
+    },
+    "/v1/admin/matches/disputed": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Disputed",
+        "description": "Disputed matches, the oldest first, with the counted votes for each product.",
+        "operationId": "disputed_v1_admin_matches_disputed_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisputedMatchesOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token: auth_required"
+          },
+          "403": {
+            "description": "Not an operator (or a device token): forbidden"
+          },
+          "503": {
+            "description": "Sign-in not configured: auth_unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/matches/uncertain": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Uncertain",
+        "description": "Uncertain matches, the most seen first, with up to 3 candidates each.",
+        "operationId": "uncertain_v1_admin_matches_uncertain_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UncertainMatchesOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token: auth_required"
+          },
+          "403": {
+            "description": "Not an operator (or a device token): forbidden"
+          },
+          "503": {
+            "description": "Sign-in not configured: auth_unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/products/proposed": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Proposed",
+        "description": "New products waiting for an operator, the oldest first.",
+        "operationId": "proposed_v1_admin_products_proposed_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposedProductsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token: auth_required"
+          },
+          "403": {
+            "description": "Not an operator (or a device token): forbidden"
+          },
+          "503": {
+            "description": "Sign-in not configured: auth_unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/matches/{alias_id}/approve": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Approve Match",
+        "description": "The match is final at once (FR-39), for product_id or the alias's current product. The\nchain's other final aliases of the same text move with it.",
+        "operationId": "approve_match_v1_admin_matches__alias_id__approve_post",
+        "parameters": [
+          {
+            "name": "alias_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Alias Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ApproveMatchIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApproveMatchOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token: auth_required"
+          },
+          "403": {
+            "description": "Not an operator (or a device token): forbidden"
+          },
+          "503": {
+            "description": "Sign-in not configured: auth_unavailable"
+          },
+          "404": {
+            "description": "alias_not_found"
+          },
+          "422": {
+            "description": "invalid_vote: no such product, or one merged into another"
+          }
+        }
+      }
+    },
+    "/v1/admin/products/{product_id}/approve": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Approve Product",
+        "description": "A proposed product is active. An active one is left as it is.",
+        "operationId": "approve_product_v1_admin_products__product_id__approve_post",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Product Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApproveProductOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token: auth_required"
+          },
+          "403": {
+            "description": "Not an operator (or a device token): forbidden"
+          },
+          "503": {
+            "description": "Sign-in not configured: auth_unavailable"
+          },
+          "404": {
+            "description": "product_not_found"
+          },
+          "409": {
+            "description": "product_merged"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/products/merge": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Merge",
+        "description": "Merge the duplicate remove_id into keep_id: its matches, observations and promotions move\nto keep_id, and it is merged_into keep_id. One transaction.",
+        "operationId": "merge_v1_admin_products_merge_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MergeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No token: auth_required"
+          },
+          "403": {
+            "description": "Not an operator (or a device token): forbidden"
+          },
+          "503": {
+            "description": "Sign-in not configured: auth_unavailable"
+          },
+          "404": {
+            "description": "product_not_found"
+          },
+          "409": {
+            "description": "product_merged"
+          },
+          "422": {
+            "description": "invalid_merge: keep_id equals remove_id"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AdminAliasOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "chain_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Chain Id"
+          },
+          "chain_name": {
+            "type": "string",
+            "title": "Chain Name"
+          },
+          "alias_text": {
+            "type": "string",
+            "title": "Alias Text"
+          },
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "occurrences": {
+            "type": "integer",
+            "title": "Occurrences"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "chain_id",
+          "chain_name",
+          "alias_text",
+          "barcode",
+          "product_id",
+          "product_name",
+          "confidence",
+          "occurrences",
+          "updated_at"
+        ],
+        "title": "AdminAliasOut"
+      },
+      "ApproveMatchIn": {
+        "properties": {
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ApproveMatchIn"
+      },
+      "ApproveMatchOut": {
+        "properties": {
+          "alias_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Alias Id"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "product_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Id"
+          },
+          "changed": {
+            "type": "boolean",
+            "title": "Changed"
+          },
+          "realigned_alias_ids": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "title": "Realigned Alias Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "alias_id",
+          "state",
+          "product_id",
+          "changed",
+          "realigned_alias_ids"
+        ],
+        "title": "ApproveMatchOut"
+      },
+      "ApproveProductOut": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "changed": {
+            "type": "boolean",
+            "title": "Changed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "status",
+          "changed"
+        ],
+        "title": "ApproveProductOut"
+      },
       "BrandIdsIn": {
         "properties": {
           "brand_ids": {
@@ -542,6 +1094,37 @@
           "name"
         ],
         "title": "BrandOut"
+      },
+      "CandidateOut": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "product_name",
+          "score"
+        ],
+        "title": "CandidateOut"
       },
       "ChainOut": {
         "properties": {
@@ -668,6 +1251,47 @@
         ],
         "title": "DeviceRegisterOut"
       },
+      "DisputedMatchOut": {
+        "properties": {
+          "alias": {
+            "$ref": "#/components/schemas/AdminAliasOut"
+          },
+          "votes": {
+            "items": {
+              "$ref": "#/components/schemas/ProductVotesOut"
+            },
+            "type": "array",
+            "title": "Votes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "alias",
+          "votes"
+        ],
+        "title": "DisputedMatchOut"
+      },
+      "DisputedMatchesOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DisputedMatchOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "items"
+        ],
+        "title": "DisputedMatchesOut"
+      },
       "GeocodeOut": {
         "properties": {
           "lat": {
@@ -754,6 +1378,82 @@
           "id"
         ],
         "title": "MeOut"
+      },
+      "MergeIn": {
+        "properties": {
+          "keep_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Keep Id"
+          },
+          "remove_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Remove Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "keep_id",
+          "remove_id"
+        ],
+        "title": "MergeIn"
+      },
+      "MergeOut": {
+        "properties": {
+          "keep_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Keep Id"
+          },
+          "remove_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Remove Id"
+          },
+          "remove_status": {
+            "type": "string",
+            "title": "Remove Status"
+          },
+          "aliases_moved": {
+            "type": "integer",
+            "title": "Aliases Moved"
+          },
+          "barcode_moved": {
+            "type": "boolean",
+            "title": "Barcode Moved"
+          },
+          "observations_moved": {
+            "type": "integer",
+            "title": "Observations Moved"
+          },
+          "promotion_products_moved": {
+            "type": "integer",
+            "title": "Promotion Products Moved"
+          },
+          "votes_moved": {
+            "type": "integer",
+            "title": "Votes Moved"
+          },
+          "candidates_removed": {
+            "type": "integer",
+            "title": "Candidates Removed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "keep_id",
+          "remove_id",
+          "remove_status",
+          "aliases_moved",
+          "barcode_moved",
+          "observations_moved",
+          "promotion_products_moved",
+          "votes_moved",
+          "candidates_removed"
+        ],
+        "title": "MergeOut"
       },
       "MyBrandOut": {
         "properties": {
@@ -848,6 +1548,141 @@
           "default_minutes"
         ],
         "title": "PrefsOut"
+      },
+      "ProductVotesOut": {
+        "properties": {
+          "product_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Product Id"
+          },
+          "product_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name"
+          },
+          "votes": {
+            "type": "integer",
+            "title": "Votes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "product_id",
+          "product_name",
+          "votes"
+        ],
+        "title": "ProductVotesOut"
+      },
+      "ProposedProductOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "barcode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Barcode"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "alias_count": {
+            "type": "integer",
+            "title": "Alias Count"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "barcode",
+          "created_at",
+          "alias_count"
+        ],
+        "title": "ProposedProductOut"
+      },
+      "ProposedProductsOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ProposedProductOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "items"
+        ],
+        "title": "ProposedProductsOut"
+      },
+      "UncertainMatchOut": {
+        "properties": {
+          "alias": {
+            "$ref": "#/components/schemas/AdminAliasOut"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateOut"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "required": [
+          "alias",
+          "candidates"
+        ],
+        "title": "UncertainMatchOut"
+      },
+      "UncertainMatchesOut": {
+        "properties": {
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UncertainMatchOut"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "items"
+        ],
+        "title": "UncertainMatchesOut"
       },
       "ValidationError": {
         "properties": {

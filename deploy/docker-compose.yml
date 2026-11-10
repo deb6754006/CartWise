@@ -31,6 +31,10 @@ services:
       DATABASE_URL: postgresql+psycopg://cartwise:cartwise@db:5432/cartwise
       ENV: dev
       LOG_LEVEL: INFO
+      # The match admin tool (Story 4.5). No values here: set them in deploy/.env (not in git)
+      # or in the shell. Without FIREBASE_PROJECT_ID, /v1/admin answers 503 auth_unavailable.
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      OPERATOR_FIREBASE_UIDS: ${OPERATOR_FIREBASE_UIDS:-}
     ports:
       - "8000:8000"
 

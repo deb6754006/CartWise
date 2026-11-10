@@ -6,6 +6,7 @@ RS256 is a Firebase ID token (registered user), anything else goes down the devi
 path (which accepts HS256 with typ=device only).
 """
 
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated, Literal
@@ -15,6 +16,7 @@ from fastapi import Depends, Request
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.core.db import get_session_factory
 from app.core.errors import AppError
 from app.core.firebase import ALGORITHM as FIREBASE_ALGORITHM
@@ -27,6 +29,7 @@ type SubjectKind = Literal["user", "device", "anonymous"]
 AUTH_REQUIRED_HE = "נדרשת התחברות"
 DB_UNAVAILABLE_HE = "בסיס הנתונים לא זמין"
 NOT_LINKED_HE = "החשבון עדיין לא חובר, נסו להתחבר שוב"
+FORBIDDEN_HE = "אין הרשאה"
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +47,10 @@ def auth_required() -> AppError:
 
 def not_linked() -> AppError:
     return AppError("not_linked", NOT_LINKED_HE, status=401)
+
+
+def forbidden() -> AppError:
+    return AppError("forbidden", FORBIDDEN_HE, status=403)
 
 
 def db_unavailable() -> AppError:
@@ -126,3 +133,37 @@ def require_firebase_uid(
     if not is_firebase_token(token):
         raise invalid_token()
     return verifier.verify(token)
+
+
+def require_operator(
+    request: Request,
+    session_factory: Annotated[Callable[[], Session], Depends(get_session_factory)],
+    verifier: Annotated[FirebaseVerifier, Depends(get_firebase_verifier)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> uuid.UUID:
+    """For the match admin tool (Story 4.5): the user_id of an operator, a registered user whose
+    Firebase UID is in OPERATOR_FIREBASE_UIDS. No token: 401 auth_required. Sign-in not
+    configured: 503 auth_unavailable. A valid device token, a UID not in the list, or a user
+    that does not exist or was deleted: 403 forbidden. An invalid or malformed token: 401
+    invalid_token."""
+    token = bearer_token(request)
+    if token is None:
+        raise auth_required()
+    # As on link: an unconfigured server answers 503, whatever was sent.
+    if not verifier.configured:
+        raise auth_unavailable()
+    if not is_firebase_token(token):
+        # A valid device token is a guest: forbidden. Anything else is 401 invalid_token.
+        decode_device_token(token)
+        raise forbidden()
+    firebase_uid = verifier.verify(token)
+    if firebase_uid not in settings.operator_firebase_uids:
+        raise forbidden()
+    try:
+        with session_factory() as session:
+            user = identity_service.user_for_firebase_uid(session, firebase_uid)
+    except SQLAlchemyError:
+        raise db_unavailable() from None
+    if user is None or user.deleted:
+        raise forbidden()
+    return user.id

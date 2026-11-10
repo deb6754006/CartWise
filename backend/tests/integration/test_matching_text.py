@@ -104,6 +104,11 @@ def _aliases(engine: Engine) -> list[dict[str, Any]]:
     return _rows(engine, "SELECT * FROM product_aliases ORDER BY id")
 
 
+def _seen_once_more(rows: list[dict[str, Any]], alias_id: uuid.UUID | None) -> list[dict[str, Any]]:
+    """rows, with the occurrences of alias_id up by 1: what matching it again changes (4.5)."""
+    return [{**r, "occurrences": r["occurrences"] + (r["id"] == alias_id)} for r in rows]
+
+
 def _candidates(engine: Engine) -> list[dict[str, Any]]:
     return _rows(engine, "SELECT * FROM match_candidates ORDER BY alias_id, rank")
 
@@ -295,7 +300,10 @@ def test_a_settled_alias_is_returned_as_it_is(
         first.product_id,
         first.alias_id,
     )
-    assert (_aliases(engine), _candidates(engine), _count(engine, "products")) == before
+    assert (_aliases(engine), _candidates(engine), _count(engine, "products")) == (
+        _seen_once_more(before[0], first.alias_id),
+        *before[1:],
+    )
     [record] = [r for r in caplog.records if r.getMessage() == "matching_match"]
     assert record.path == "memory"  # type: ignore[attr-defined]
 
@@ -575,7 +583,10 @@ def test_a_settled_alias_found_late_is_not_changed(
         first.product_id,
         first.alias_id,
     )
-    assert (_aliases(engine), _candidates(engine), _count(engine, "products")) == before
+    assert (_aliases(engine), _candidates(engine), _count(engine, "products")) == (
+        _seen_once_more(before[0], first.alias_id),
+        *before[1:],
+    )
     [record] = [r for r in caplog.records if r.getMessage() == "matching_match"]
     assert record.path == "memory"  # type: ignore[attr-defined]
 

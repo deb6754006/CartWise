@@ -213,10 +213,197 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/matches/disputed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Disputed
+         * @description Disputed matches, the oldest first, with the counted votes for each product.
+         */
+        get: operations["disputed_v1_admin_matches_disputed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/matches/uncertain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Uncertain
+         * @description Uncertain matches, the most seen first, with up to 3 candidates each.
+         */
+        get: operations["uncertain_v1_admin_matches_uncertain_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/products/proposed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Proposed
+         * @description New products waiting for an operator, the oldest first.
+         */
+        get: operations["proposed_v1_admin_products_proposed_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/matches/{alias_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Match
+         * @description The match is final at once (FR-39), for product_id or the alias's current product. The
+         *     chain's other final aliases of the same text move with it.
+         */
+        post: operations["approve_match_v1_admin_matches__alias_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/products/{product_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Product
+         * @description A proposed product is active. An active one is left as it is.
+         */
+        post: operations["approve_product_v1_admin_products__product_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/products/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge
+         * @description Merge the duplicate remove_id into keep_id: its matches, observations and promotions move
+         *     to keep_id, and it is merged_into keep_id. One transaction.
+         */
+        post: operations["merge_v1_admin_products_merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdminAliasOut */
+        AdminAliasOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Chain Id
+             * Format: uuid
+             */
+            chain_id: string;
+            /** Chain Name */
+            chain_name: string;
+            /** Alias Text */
+            alias_text: string;
+            /** Barcode */
+            barcode: string | null;
+            /** Product Id */
+            product_id: string | null;
+            /** Product Name */
+            product_name: string | null;
+            /** Confidence */
+            confidence: number | null;
+            /** Occurrences */
+            occurrences: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ApproveMatchIn */
+        ApproveMatchIn: {
+            /** Product Id */
+            product_id?: string | null;
+        };
+        /** ApproveMatchOut */
+        ApproveMatchOut: {
+            /**
+             * Alias Id
+             * Format: uuid
+             */
+            alias_id: string;
+            /** State */
+            state: string;
+            /** Product Id */
+            product_id: string | null;
+            /** Changed */
+            changed: boolean;
+            /** Realigned Alias Ids */
+            realigned_alias_ids: string[];
+        };
+        /** ApproveProductOut */
+        ApproveProductOut: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Status */
+            status: string;
+            /** Changed */
+            changed: boolean;
+        };
         /** BrandIdsIn */
         BrandIdsIn: {
             /** Brand Ids */
@@ -231,6 +418,18 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+        };
+        /** CandidateOut */
+        CandidateOut: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Product Name */
+            product_name: string | null;
+            /** Score */
+            score: number;
         };
         /** ChainOut */
         ChainOut: {
@@ -289,6 +488,19 @@ export interface components {
              */
             expires_at: string;
         };
+        /** DisputedMatchOut */
+        DisputedMatchOut: {
+            alias: components["schemas"]["AdminAliasOut"];
+            /** Votes */
+            votes: components["schemas"]["ProductVotesOut"][];
+        };
+        /** DisputedMatchesOut */
+        DisputedMatchesOut: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["DisputedMatchOut"][];
+        };
         /** GeocodeOut */
         GeocodeOut: {
             /** Lat */
@@ -326,6 +538,46 @@ export interface components {
              * Format: uuid
              */
             id: string;
+        };
+        /** MergeIn */
+        MergeIn: {
+            /**
+             * Keep Id
+             * Format: uuid
+             */
+            keep_id: string;
+            /**
+             * Remove Id
+             * Format: uuid
+             */
+            remove_id: string;
+        };
+        /** MergeOut */
+        MergeOut: {
+            /**
+             * Keep Id
+             * Format: uuid
+             */
+            keep_id: string;
+            /**
+             * Remove Id
+             * Format: uuid
+             */
+            remove_id: string;
+            /** Remove Status */
+            remove_status: string;
+            /** Aliases Moved */
+            aliases_moved: number;
+            /** Barcode Moved */
+            barcode_moved: boolean;
+            /** Observations Moved */
+            observations_moved: number;
+            /** Promotion Products Moved */
+            promotion_products_moved: number;
+            /** Votes Moved */
+            votes_moved: number;
+            /** Candidates Removed */
+            candidates_removed: number;
         };
         /** MyBrandOut */
         MyBrandOut: {
@@ -367,6 +619,57 @@ export interface components {
              * @enum {integer}
              */
             default_minutes: 5 | 10 | 15 | 20 | 30;
+        };
+        /** ProductVotesOut */
+        ProductVotesOut: {
+            /**
+             * Product Id
+             * Format: uuid
+             */
+            product_id: string;
+            /** Product Name */
+            product_name: string | null;
+            /** Votes */
+            votes: number;
+        };
+        /** ProposedProductOut */
+        ProposedProductOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Barcode */
+            barcode: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Alias Count */
+            alias_count: number;
+        };
+        /** ProposedProductsOut */
+        ProposedProductsOut: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["ProposedProductOut"][];
+        };
+        /** UncertainMatchOut */
+        UncertainMatchOut: {
+            alias: components["schemas"]["AdminAliasOut"];
+            /** Candidates */
+            candidates: components["schemas"]["CandidateOut"][];
+        };
+        /** UncertainMatchesOut */
+        UncertainMatchesOut: {
+            /** Total */
+            total: number;
+            /** Items */
+            items: components["schemas"]["UncertainMatchOut"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -806,6 +1109,358 @@ export interface operations {
                 };
             };
             /** @description geocoding_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    disputed_v1_admin_matches_disputed_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputedMatchesOut"];
+                };
+            };
+            /** @description No token: auth_required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an operator (or a device token): forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Sign-in not configured: auth_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    uncertain_v1_admin_matches_uncertain_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UncertainMatchesOut"];
+                };
+            };
+            /** @description No token: auth_required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an operator (or a device token): forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Sign-in not configured: auth_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    proposed_v1_admin_products_proposed_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProposedProductsOut"];
+                };
+            };
+            /** @description No token: auth_required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an operator (or a device token): forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Sign-in not configured: auth_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    approve_match_v1_admin_matches__alias_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                alias_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApproveMatchIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApproveMatchOut"];
+                };
+            };
+            /** @description No token: auth_required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an operator (or a device token): forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description alias_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description invalid_vote: no such product, or one merged into another */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sign-in not configured: auth_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    approve_product_v1_admin_products__product_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApproveProductOut"];
+                };
+            };
+            /** @description No token: auth_required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an operator (or a device token): forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description product_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description product_merged */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Sign-in not configured: auth_unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    merge_v1_admin_products_merge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeOut"];
+                };
+            };
+            /** @description No token: auth_required */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not an operator (or a device token): forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description product_not_found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description product_merged */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description invalid_merge: keep_id equals remove_id */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sign-in not configured: auth_unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;
